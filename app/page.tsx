@@ -1,9 +1,16 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Pack = "4" | "8";
+
+type PickupPlan = {
+  pickupDate: string;
+  pickupDisplay: string;
+  pickupWindow: string;
+  cutoffText: string;
+};
 
 const products = {
   "4": { label: "4-Pack", price: 19, scones: 4 },
@@ -18,6 +25,14 @@ export default function Home() {
   const [phone, setPhone] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [pickupPlan, setPickupPlan] = useState<PickupPlan | null>(null);
+
+  useEffect(() => {
+    fetch("/api/pickup-plan", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => setPickupPlan(data))
+      .catch(() => setPickupPlan(null));
+  }, []);
 
   const selected = products[pack];
   const total = selected.price * quantity;
@@ -107,9 +122,15 @@ export default function Home() {
             </p>
 
             <div className="pickupCard">
-              <span>Current pickup plan</span>
-              <strong>Saturday • 9:00 AM–1:00 PM</strong>
-              <small>Orders close Thursday at 8:00 PM. Pickup location details can be added before launch.</small>
+              <span>Next pickup</span>
+              <strong>
+                {pickupPlan
+                  ? `Saturday, ${pickupPlan.pickupDisplay} • ${pickupPlan.pickupWindow}`
+                  : "Saturday • 9:00 AM–1:00 PM"}
+              </strong>
+              <small>
+                Thursday 8:00 PM ET is the cutoff for that Saturday. Orders after the cutoff roll to the following Saturday.
+              </small>
             </div>
           </div>
 
@@ -165,6 +186,12 @@ export default function Home() {
               <span>{totalScones} scones</span>
               <strong>${total.toFixed(2)}</strong>
             </div>
+
+            {pickupPlan && (
+              <p className="checkoutPickup">
+                Pickup: Saturday, {pickupPlan.pickupDisplay} · {pickupPlan.pickupWindow}
+              </p>
+            )}
 
             <button className="primaryButton checkoutButton" type="submit" disabled={loading}>
               {loading ? "Opening secure checkout…" : checkoutText}

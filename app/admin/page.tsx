@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { formatPickupDate, getPickupPlan } from "../lib/pickup";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,7 @@ type OrderRow = {
   scones: number;
   amount: number;
   fulfillmentStatus: FulfillmentStatus;
+  pickupDate: string;
 };
 
 function money(cents: number) {
@@ -39,7 +41,6 @@ function formatPhone(value: string) {
     : digits;
 
   if (normalized.length !== 10) return value || "—";
-
   return `(${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6)}`;
 }
 
@@ -52,6 +53,10 @@ function statusLabel(status: FulfillmentStatus) {
   if (status === "ready") return "Ready";
   if (status === "picked_up") return "Picked Up";
   return "Paid";
+}
+
+function inferPickupDate(created: number) {
+  return getPickupPlan(new Date(created * 1000)).pickupDate;
 }
 
 export default async function AdminPage() {
@@ -70,10 +75,9 @@ export default async function AdminPage() {
 
   const stripe = new Stripe(secretKey);
   const isTestMode = secretKey.startsWith("sk_test_");
+  const currentPlan = getPickupPlan();
 
-  const sessions = await stripe.checkout.sessions.list({
-    limit: 100,
-  });
+  const sessions = await stripe.checkout.sessions.list({ limit: 100 });
 
   const orders: OrderRow[] = sessions.data
     .filter(
@@ -110,26 +114,41 @@ export default async function AdminPage() {
         fulfillmentStatus: normalizeStatus(
           session.metadata?.fulfillment_status
         ),
+        pickupDate:
+          session.metadata?.pickup_date ||
+          inferPickupDate(session.created),
       };
     });
 
-  const totalRevenue = orders.reduce((sum, order) => sum + order.amount, 0);
-  const totalScones = orders.reduce((sum, order) => sum + order.scones, 0);
-  const fourPacks = orders
+  const pickupDates = [...new Set(orders.map((order) => order.pickupDate))].sort();
+
+  const currentPickupOrders = orders.filter(
+    (order) => order.pickupDate === currentPlan.pickupDate
+  );
+
+  const currentTotalScones = currentPickupOrders.reduce(
+    (sum, order) => sum + order.scones,
+    0
+  );
+  const currentFourPacks = currentPickupOrders
     .filter((order) => order.packSize === 4)
     .reduce((sum, order) => sum + order.boxes, 0);
-  const eightPacks = orders
+  const currentEightPacks = currentPickupOrders
     .filter((order) => order.packSize === 8)
     .reduce((sum, order) => sum + order.boxes, 0);
-  const batches = Math.ceil(totalScones / 8);
+  const currentBatches = Math.ceil(currentTotalScones / 8);
+  const currentRevenue = currentPickupOrders.reduce(
+    (sum, order) => sum + order.amount,
+    0
+  );
 
-  const paidCount = orders.filter(
+  const paidCount = currentPickupOrders.filter(
     (order) => order.fulfillmentStatus === "paid"
   ).length;
-  const readyCount = orders.filter(
+  const readyCount = currentPickupOrders.filter(
     (order) => order.fulfillmentStatus === "ready"
   ).length;
-  const pickedUpCount = orders.filter(
+  const pickedUpCount = currentPickupOrders.filter(
     (order) => order.fulfillmentStatus === "picked_up"
   ).length;
 
@@ -145,162 +164,141 @@ export default async function AdminPage() {
               </span>
             </div>
             <h1>Order Dashboard</h1>
-            <p>
-              Paid Stripe orders and pickup status for your scone orders.
-            </p>
+            <p>Weekly production and pickup status for your paid Stripe orders.</p>
           </div>
-          <a className="primaryButton" href="/">
-            View Website
-          </a>
+          <a className="primaryButton" href="/">View Website</a>
         </div>
 
-        <section className="adminStats">
+        <section className="pickupWeekHeader">
           <div>
-            <span>Paid orders</span>
-            <strong>{orders.length}</strong>
+            <span>Current production week</span>
+            <strong>{formatPickupDate(currentPlan.pickupDate)}</strong>
+            <small>{currentPlan.pickupWindow} pickup</small>
           </div>
           <div>
-            <span>4-pack boxes</span>
-            <strong>{fourPacks}</strong>
-          </div>
-          <div>
-            <span>8-pack boxes</span>
-            <strong>{eightPacks}</strong>
-          </div>
-          <div>
-            <span>Total scones</span>
-            <strong>{totalScones}</strong>
-          </div>
-          <div>
-            <span>Recipe batches</span>
-            <strong>{batches}</strong>
-          </div>
-          <div>
-            <span>Revenue</span>
-            <strong>{money(totalRevenue)}</strong>
+            <span>Order cutoff</span>
+            <strong>Thursday · 8:00 PM ET</strong>
+            <small>Later orders roll to the following Saturday.</small>
           </div>
         </section>
 
+        <section className="adminStats">
+          <div><span>Paid orders</span><strong>{currentPickupOrders.length}</strong></div>
+          <div><span>4-pack boxes</span><strong>{currentFourPacks}</strong></div>
+          <div><span>8-pack boxes</span><strong>{currentEightPacks}</strong></div>
+          <div><span>Total scones</span><strong>{currentTotalScones}</strong></div>
+          <div><span>Recipe batches</span><strong>{currentBatches}</strong></div>
+          <div><span>Revenue</span><strong>{money(currentRevenue)}</strong></div>
+        </section>
+
         <section className="workflowStats">
-          <div>
-            <span className="statusDot paid" />
-            <b>{paidCount}</b>
-            <small>Paid / to prepare</small>
-          </div>
-          <div>
-            <span className="statusDot ready" />
-            <b>{readyCount}</b>
-            <small>Ready for pickup</small>
-          </div>
-          <div>
-            <span className="statusDot picked" />
-            <b>{pickedUpCount}</b>
-            <small>Picked up</small>
-          </div>
+          <div><span className="statusDot paid" /><b>{paidCount}</b><small>Paid / to prepare</small></div>
+          <div><span className="statusDot ready" /><b>{readyCount}</b><small>Ready for pickup</small></div>
+          <div><span className="statusDot picked" /><b>{pickedUpCount}</b><small>Picked up</small></div>
         </section>
 
         <section className="productionCard">
           <div>
-            <p className="sectionKicker">Production</p>
-            <h2>{totalScones} scones to bake</h2>
+            <p className="sectionKicker">This Saturday</p>
+            <h2>{currentTotalScones} scones to bake</h2>
           </div>
           <div className="productionNumbers">
-            <span>
-              <b>{batches}</b>
-              recipe batches
-            </span>
-            <span>
-              <b>{fourPacks}</b>
-              four-packs
-            </span>
-            <span>
-              <b>{eightPacks}</b>
-              eight-packs
-            </span>
+            <span><b>{currentBatches}</b>recipe batches</span>
+            <span><b>{currentFourPacks}</b>four-packs</span>
+            <span><b>{currentEightPacks}</b>eight-packs</span>
           </div>
         </section>
 
-        <section className="ordersPanel">
-          <div className="ordersHeading">
-            <div>
-              <p className="sectionKicker">Orders</p>
-              <h2>Paid customers</h2>
-            </div>
-            <small>Newest first · Eastern Time</small>
-          </div>
+        {pickupDates.length === 0 ? (
+          <section className="ordersPanel">
+            <div className="emptyOrders">No paid scone orders yet.</div>
+          </section>
+        ) : (
+          pickupDates.map((pickupDate) => {
+            const weekOrders = orders.filter(
+              (order) => order.pickupDate === pickupDate
+            );
+            const weekScones = weekOrders.reduce(
+              (sum, order) => sum + order.scones,
+              0
+            );
 
-          {orders.length === 0 ? (
-            <div className="emptyOrders">
-              No paid scone orders yet. Sandbox test purchases will appear here.
-            </div>
-          ) : (
-            <div className="ordersTableWrap">
-              <table className="ordersTable">
-                <thead>
-                  <tr>
-                    <th>Customer</th>
-                    <th>Order</th>
-                    <th>Scones</th>
-                    <th>Paid</th>
-                    <th>Ordered</th>
-                    <th>Contact</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((order) => (
-                    <tr key={order.id}>
-                      <td>
-                        <strong>{order.name}</strong>
-                        <small>{order.email}</small>
-                      </td>
-                      <td>
-                        {order.boxes} × {order.packSize}-pack
-                      </td>
-                      <td>{order.scones}</td>
-                      <td>{money(order.amount)}</td>
-                      <td>{dateTime(order.created)}</td>
-                      <td>{formatPhone(order.phone)}</td>
-                      <td>
-                        <div className="statusCell">
-                          <span className={`statusPill ${order.fulfillmentStatus}`}>
-                            {statusLabel(order.fulfillmentStatus)}
-                          </span>
+            return (
+              <section className="ordersPanel pickupGroup" key={pickupDate}>
+                <div className="ordersHeading">
+                  <div>
+                    <p className="sectionKicker">Pickup week</p>
+                    <h2>{formatPickupDate(pickupDate)}</h2>
+                  </div>
+                  <small>
+                    {weekOrders.length} order{weekOrders.length === 1 ? "" : "s"} · {weekScones} scones
+                  </small>
+                </div>
 
-                          <div className="statusActions">
-                            {order.fulfillmentStatus !== "paid" && (
-                              <form action="/api/admin/order-status" method="post">
-                                <input type="hidden" name="session_id" value={order.id} />
-                                <input type="hidden" name="status" value="paid" />
-                                <button type="submit">Paid</button>
-                              </form>
-                            )}
-
-                            {order.fulfillmentStatus !== "ready" && (
-                              <form action="/api/admin/order-status" method="post">
-                                <input type="hidden" name="session_id" value={order.id} />
-                                <input type="hidden" name="status" value="ready" />
-                                <button type="submit">Ready</button>
-                              </form>
-                            )}
-
-                            {order.fulfillmentStatus !== "picked_up" && (
-                              <form action="/api/admin/order-status" method="post">
-                                <input type="hidden" name="session_id" value={order.id} />
-                                <input type="hidden" name="status" value="picked_up" />
-                                <button type="submit">Picked Up</button>
-                              </form>
-                            )}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                <div className="ordersTableWrap">
+                  <table className="ordersTable">
+                    <thead>
+                      <tr>
+                        <th>Customer</th>
+                        <th>Order</th>
+                        <th>Scones</th>
+                        <th>Paid</th>
+                        <th>Ordered</th>
+                        <th>Contact</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weekOrders.map((order) => (
+                        <tr key={order.id}>
+                          <td>
+                            <strong>{order.name}</strong>
+                            <small>{order.email}</small>
+                          </td>
+                          <td>{order.boxes} × {order.packSize}-pack</td>
+                          <td>{order.scones}</td>
+                          <td>{money(order.amount)}</td>
+                          <td>{dateTime(order.created)}</td>
+                          <td>{formatPhone(order.phone)}</td>
+                          <td>
+                            <div className="statusCell">
+                              <span className={`statusPill ${order.fulfillmentStatus}`}>
+                                {statusLabel(order.fulfillmentStatus)}
+                              </span>
+                              <div className="statusActions">
+                                {order.fulfillmentStatus !== "paid" && (
+                                  <form action="/api/admin/order-status" method="post">
+                                    <input type="hidden" name="session_id" value={order.id} />
+                                    <input type="hidden" name="status" value="paid" />
+                                    <button type="submit">Paid</button>
+                                  </form>
+                                )}
+                                {order.fulfillmentStatus !== "ready" && (
+                                  <form action="/api/admin/order-status" method="post">
+                                    <input type="hidden" name="session_id" value={order.id} />
+                                    <input type="hidden" name="status" value="ready" />
+                                    <button type="submit">Ready</button>
+                                  </form>
+                                )}
+                                {order.fulfillmentStatus !== "picked_up" && (
+                                  <form action="/api/admin/order-status" method="post">
+                                    <input type="hidden" name="session_id" value={order.id} />
+                                    <input type="hidden" name="status" value="picked_up" />
+                                    <button type="submit">Picked Up</button>
+                                  </form>
+                                )}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            );
+          })
+        )}
       </div>
     </main>
   );

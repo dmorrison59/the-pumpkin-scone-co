@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Stripe from "stripe";
+import { formatPickupDate } from "../lib/pickup";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,8 @@ export default async function SuccessPage({
   const totalScones = session?.metadata?.total_scones;
   const packSize = session?.metadata?.pack_size;
   const boxQuantity = session?.metadata?.box_quantity;
+  const pickupDate = session?.metadata?.pickup_date;
+  const pickupWindow = session?.metadata?.pickup_window || "9:00 AM–1:00 PM";
 
   return (
     <main className="successPage">
@@ -50,9 +53,7 @@ export default async function SuccessPage({
             <div className="successOrder">
               <div>
                 <span>Order</span>
-                <strong>
-                  {boxQuantity} × {packSize}-pack
-                </strong>
+                <strong>{boxQuantity} × {packSize}-pack</strong>
               </div>
               <div>
                 <span>Total scones</span>
@@ -64,7 +65,11 @@ export default async function SuccessPage({
               </div>
               <div>
                 <span>Pickup</span>
-                <strong>Saturday · 9:00 AM–1:00 PM</strong>
+                <strong>
+                  {pickupDate ? formatPickupDate(pickupDate) : "Saturday"}
+                  <br />
+                  {pickupWindow}
+                </strong>
               </div>
             </div>
 

@@ -467,3 +467,59 @@ legend { font-weight: 800; margin-bottom: 12px; }
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Weekly pickup-date upgrade --- */
+.checkoutPickup {
+  margin: 16px 0 0;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--cream);
+  color: var(--espresso);
+  font-size: .82rem;
+  text-align: center;
+  border: 1px solid var(--line);
+}
+
+.pickupWeekHeader {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.pickupWeekHeader > div {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 20px;
+  display: grid;
+  gap: 6px;
+}
+
+.pickupWeekHeader span,
+.pickupWeekHeader small {
+  color: var(--muted);
+}
+
+.pickupWeekHeader span {
+  font-size: .76rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  font-weight: 800;
+}
+
+.pickupWeekHeader strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.35rem;
+  font-weight: 500;
+}
+
+.pickupGroup {
+  margin-top: 18px;
+}
+
+@media (max-width: 700px) {
+  .pickupWeekHeader {
+    grid-template-columns: 1fr;
+  }
+}

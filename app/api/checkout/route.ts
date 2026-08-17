@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
+import { getPickupPlan } from "../../lib/pickup";
 
 type Pack = "4" | "8";
 
@@ -20,7 +21,7 @@ export async function POST(request: Request) {
   const secretKey = process.env.STRIPE_SECRET_KEY;
   if (!secretKey || secretKey.includes("replace_me")) {
     return NextResponse.json(
-      { error: "Stripe test mode is not connected yet. Add STRIPE_SECRET_KEY to .env.local." },
+      { error: "Stripe is not connected yet." },
       { status: 503 }
     );
   }
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
   if (!pack || !(pack in PACKS) || !Number.isInteger(quantity) || quantity < 1 || quantity > 6) {
     return NextResponse.json({ error: "Please choose a valid box and quantity." }, { status: 400 });
   }
+
   if (!name || !email || !phone) {
     return NextResponse.json({ error: "Name, email, and phone are required." }, { status: 400 });
   }
@@ -49,6 +51,7 @@ export async function POST(request: Request) {
   const product = PACKS[pack];
   const configuredPriceId = process.env[product.envPrice];
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+  const pickupPlan = getPickupPlan();
 
   const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = configuredPriceId
     ? { price: configuredPriceId, quantity }
@@ -58,7 +61,8 @@ export async function POST(request: Request) {
           unit_amount: product.unitAmount,
           product_data: {
             name: product.name,
-            description: "Fresh seasonal pumpkin scones with vanilla glaze and pumpkin-spice drizzle.",
+            description:
+              "Fresh seasonal pumpkin scones with vanilla glaze and pumpkin-spice drizzle.",
           },
         },
         quantity,
@@ -77,7 +81,9 @@ export async function POST(request: Request) {
         pack_size: pack,
         box_quantity: String(quantity),
         total_scones: String(Number(pack) * quantity),
-        pickup_window: "Saturday 9:00 AM-1:00 PM",
+        pickup_date: pickupPlan.pickupDate,
+        pickup_window: pickupPlan.pickupWindow,
+        fulfillment_status: "paid",
       },
       success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/#order`,
@@ -85,12 +91,18 @@ export async function POST(request: Request) {
     });
 
     if (!session.url) {
-      return NextResponse.json({ error: "Stripe did not return a checkout URL." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Stripe did not return a checkout URL." },
+        { status: 500 }
+      );
     }
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
     console.error("Stripe checkout error", error);
-    return NextResponse.json({ error: "Unable to start Stripe checkout. Check your test key and try again." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Unable to start Stripe checkout. Check your Stripe key and try again." },
+      { status: 500 }
+    );
   }
 }
