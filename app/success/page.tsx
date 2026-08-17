@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Stripe from "stripe";
 import { formatPickupDate } from "../lib/pickup";
+import { getLaunchConfig } from "../lib/launch";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export default async function SuccessPage({
 }) {
   const { session_id } = await searchParams;
   const secretKey = process.env.STRIPE_SECRET_KEY;
+  const launch = getLaunchConfig();
 
   let session: Stripe.Checkout.Session | null = null;
 
@@ -46,23 +48,13 @@ export default async function SuccessPage({
         {session?.payment_status === "paid" ? (
           <>
             <p>
-              Payment received. We&apos;ve reserved your pumpkin scones for the
-              scheduled pickup window.
+              Payment received. We&apos;ve reserved your pumpkin scones for the scheduled pickup window.
             </p>
 
             <div className="successOrder">
-              <div>
-                <span>Order</span>
-                <strong>{boxQuantity} × {packSize}-pack</strong>
-              </div>
-              <div>
-                <span>Total scones</span>
-                <strong>{totalScones}</strong>
-              </div>
-              <div>
-                <span>Paid</span>
-                <strong>{money(session.amount_total)}</strong>
-              </div>
+              <div><span>Order</span><strong>{boxQuantity} × {packSize}-pack</strong></div>
+              <div><span>Total scones</span><strong>{totalScones}</strong></div>
+              <div><span>Paid</span><strong>{money(session.amount_total)}</strong></div>
               <div>
                 <span>Pickup</span>
                 <strong>
@@ -73,25 +65,31 @@ export default async function SuccessPage({
               </div>
             </div>
 
-            <p className="successNote">
-              Keep your Stripe receipt for your records. Final pickup location
-              details will be provided before pickup.
-            </p>
+            <div className="pickupInstructions">
+              <h2>Pickup location</h2>
+              <p>{launch.pickupLocation || "Pickup location will be provided before pickup."}</p>
+              {launch.contactEmail && (
+                <p>
+                  Questions? <a href={`mailto:${launch.contactEmail}`}>{launch.contactEmail}</a>
+                </p>
+              )}
+            </div>
+
+            {launch.allergenNotice && (
+              <p className="allergenNotice">
+                <strong>Allergen information:</strong> {launch.allergenNotice}
+              </p>
+            )}
+
+            <p className="successNote">Keep your Stripe receipt for your records.</p>
           </>
         ) : (
-          <p>
-            Your Stripe checkout was completed. Keep your Stripe receipt for your
-            records.
-          </p>
+          <p>Your Stripe checkout was completed. Keep your Stripe receipt for your records.</p>
         )}
 
-        {session_id && (
-          <small>Confirmation reference: {session_id.slice(0, 24)}…</small>
-        )}
+        {session_id && <small>Confirmation reference: {session_id.slice(0, 24)}…</small>}
 
-        <Link className="primaryButton" href="/">
-          Back to The Pumpkin Scone Co.
-        </Link>
+        <Link className="primaryButton" href="/">Back to The Pumpkin Scone Co.</Link>
       </div>
     </main>
   );

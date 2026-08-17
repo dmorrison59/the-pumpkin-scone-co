@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { formatPickupDate, getPickupPlan } from "../lib/pickup";
+import { getLaunchConfig } from "../lib/launch";
 
 export const dynamic = "force-dynamic";
 
@@ -20,10 +21,7 @@ type OrderRow = {
 };
 
 function money(cents: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-  }).format(cents / 100);
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(cents / 100);
 }
 
 function dateTime(unix: number) {
@@ -36,10 +34,7 @@ function dateTime(unix: number) {
 
 function formatPhone(value: string) {
   const digits = value.replace(/\D/g, "");
-  const normalized = digits.length === 11 && digits.startsWith("1")
-    ? digits.slice(1)
-    : digits;
-
+  const normalized = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
   if (normalized.length !== 10) return value || "—";
   return `(${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6)}`;
 }
@@ -61,96 +56,58 @@ function inferPickupDate(created: number) {
 
 export default async function AdminPage() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
+  const launch = getLaunchConfig();
 
   if (!secretKey) {
-    return (
-      <main className="adminPage">
-        <div className="adminShell">
-          <h1>Admin is not configured.</h1>
-          <p>Add STRIPE_SECRET_KEY in Vercel.</p>
-        </div>
-      </main>
-    );
+    return <main className="adminPage"><div className="adminShell"><h1>Admin is not configured.</h1></div></main>;
   }
 
   const stripe = new Stripe(secretKey);
   const isTestMode = secretKey.startsWith("sk_test_");
   const currentPlan = getPickupPlan();
-
   const sessions = await stripe.checkout.sessions.list({ limit: 100 });
 
   const orders: OrderRow[] = sessions.data
-    .filter(
-      (session) =>
-        session.payment_status === "paid" &&
-        (session.metadata?.pack_size === "4" ||
-          session.metadata?.pack_size === "8")
+    .filter((session) =>
+      session.payment_status === "paid" &&
+      (session.metadata?.pack_size === "4" || session.metadata?.pack_size === "8")
     )
     .map((session) => {
       const packSize = Number(session.metadata?.pack_size || 0);
       const boxes = Number(session.metadata?.box_quantity || 0);
-
       return {
         id: session.id,
         created: session.created,
-        name:
-          session.metadata?.customer_name ||
-          session.customer_details?.name ||
-          "Customer",
-        email:
-          session.customer_details?.email ||
-          session.customer_email ||
-          "",
-        phone:
-          session.metadata?.customer_phone ||
-          session.customer_details?.phone ||
-          "",
+        name: session.metadata?.customer_name || session.customer_details?.name || "Customer",
+        email: session.customer_details?.email || session.customer_email || "",
+        phone: session.metadata?.customer_phone || session.customer_details?.phone || "",
         packSize,
         boxes,
-        scones:
-          Number(session.metadata?.total_scones) ||
-          packSize * boxes,
+        scones: Number(session.metadata?.total_scones) || packSize * boxes,
         amount: session.amount_total || 0,
-        fulfillmentStatus: normalizeStatus(
-          session.metadata?.fulfillment_status
-        ),
-        pickupDate:
-          session.metadata?.pickup_date ||
-          inferPickupDate(session.created),
+        fulfillmentStatus: normalizeStatus(session.metadata?.fulfillment_status),
+        pickupDate: session.metadata?.pickup_date || inferPickupDate(session.created),
       };
     });
 
   const pickupDates = [...new Set(orders.map((order) => order.pickupDate))].sort();
-
-  const currentPickupOrders = orders.filter(
-    (order) => order.pickupDate === currentPlan.pickupDate
-  );
-
-  const currentTotalScones = currentPickupOrders.reduce(
-    (sum, order) => sum + order.scones,
-    0
-  );
-  const currentFourPacks = currentPickupOrders
-    .filter((order) => order.packSize === 4)
-    .reduce((sum, order) => sum + order.boxes, 0);
-  const currentEightPacks = currentPickupOrders
-    .filter((order) => order.packSize === 8)
-    .reduce((sum, order) => sum + order.boxes, 0);
+  const currentPickupOrders = orders.filter((order) => order.pickupDate === currentPlan.pickupDate);
+  const currentTotalScones = currentPickupOrders.reduce((sum, order) => sum + order.scones, 0);
+  const currentFourPacks = currentPickupOrders.filter((o) => o.packSize === 4).reduce((sum, o) => sum + o.boxes, 0);
+  const currentEightPacks = currentPickupOrders.filter((o) => o.packSize === 8).reduce((sum, o) => sum + o.boxes, 0);
   const currentBatches = Math.ceil(currentTotalScones / 8);
-  const currentRevenue = currentPickupOrders.reduce(
-    (sum, order) => sum + order.amount,
-    0
-  );
+  const currentRevenue = currentPickupOrders.reduce((sum, order) => sum + order.amount, 0);
+  const paidCount = currentPickupOrders.filter((o) => o.fulfillmentStatus === "paid").length;
+  const readyCount = currentPickupOrders.filter((o) => o.fulfillmentStatus === "ready").length;
+  const pickedUpCount = currentPickupOrders.filter((o) => o.fulfillmentStatus === "picked_up").length;
 
-  const paidCount = currentPickupOrders.filter(
-    (order) => order.fulfillmentStatus === "paid"
-  ).length;
-  const readyCount = currentPickupOrders.filter(
-    (order) => order.fulfillmentStatus === "ready"
-  ).length;
-  const pickedUpCount = currentPickupOrders.filter(
-    (order) => order.fulfillmentStatus === "picked_up"
-  ).length;
+  const checklist = [
+    { label: "Stripe live payments", ok: !isTestMode, detail: isTestMode ? "Still in Sandbox" : "Live Stripe key detected" },
+    { label: "Pickup location", ok: launch.hasPickupLocation, detail: launch.pickupLocation || "Missing" },
+    { label: "Contact email", ok: launch.hasContactEmail, detail: launch.contactEmail || "Missing" },
+    { label: "Allergen notice", ok: launch.hasAllergenNotice, detail: launch.allergenNotice || "Missing" },
+  ];
+  const readyItems = checklist.filter((item) => item.ok).length;
 
   return (
     <main className="adminPage">
@@ -168,6 +125,26 @@ export default async function AdminPage() {
           </div>
           <a className="primaryButton" href="/">View Website</a>
         </div>
+
+        <section className="launchChecklist">
+          <div className="launchChecklistHeading">
+            <div>
+              <p className="sectionKicker">Launch readiness</p>
+              <h2>{readyItems} of {checklist.length} website items ready</h2>
+            </div>
+            <span className={`launchScore ${readyItems === checklist.length ? "complete" : ""}`}>
+              {Math.round((readyItems / checklist.length) * 100)}%
+            </span>
+          </div>
+          <div className="launchChecklistGrid">
+            {checklist.map((item) => (
+              <div className="launchCheckItem" key={item.label}>
+                <span className={item.ok ? "checkIcon complete" : "checkIcon"}>{item.ok ? "✓" : "!"}</span>
+                <div><strong>{item.label}</strong><small>{item.detail}</small></div>
+              </div>
+            ))}
+          </div>
+        </section>
 
         <section className="pickupWeekHeader">
           <div>
@@ -198,10 +175,7 @@ export default async function AdminPage() {
         </section>
 
         <section className="productionCard">
-          <div>
-            <p className="sectionKicker">This Saturday</p>
-            <h2>{currentTotalScones} scones to bake</h2>
-          </div>
+          <div><p className="sectionKicker">This Saturday</p><h2>{currentTotalScones} scones to bake</h2></div>
           <div className="productionNumbers">
             <span><b>{currentBatches}</b>recipe batches</span>
             <span><b>{currentFourPacks}</b>four-packs</span>
@@ -209,96 +183,45 @@ export default async function AdminPage() {
           </div>
         </section>
 
-        {pickupDates.length === 0 ? (
-          <section className="ordersPanel">
-            <div className="emptyOrders">No paid scone orders yet.</div>
-          </section>
-        ) : (
-          pickupDates.map((pickupDate) => {
-            const weekOrders = orders.filter(
-              (order) => order.pickupDate === pickupDate
-            );
-            const weekScones = weekOrders.reduce(
-              (sum, order) => sum + order.scones,
-              0
-            );
-
-            return (
-              <section className="ordersPanel pickupGroup" key={pickupDate}>
-                <div className="ordersHeading">
-                  <div>
-                    <p className="sectionKicker">Pickup week</p>
-                    <h2>{formatPickupDate(pickupDate)}</h2>
-                  </div>
-                  <small>
-                    {weekOrders.length} order{weekOrders.length === 1 ? "" : "s"} · {weekScones} scones
-                  </small>
-                </div>
-
-                <div className="ordersTableWrap">
-                  <table className="ordersTable">
-                    <thead>
-                      <tr>
-                        <th>Customer</th>
-                        <th>Order</th>
-                        <th>Scones</th>
-                        <th>Paid</th>
-                        <th>Ordered</th>
-                        <th>Contact</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {weekOrders.map((order) => (
-                        <tr key={order.id}>
-                          <td>
-                            <strong>{order.name}</strong>
-                            <small>{order.email}</small>
-                          </td>
-                          <td>{order.boxes} × {order.packSize}-pack</td>
-                          <td>{order.scones}</td>
-                          <td>{money(order.amount)}</td>
-                          <td>{dateTime(order.created)}</td>
-                          <td>{formatPhone(order.phone)}</td>
-                          <td>
-                            <div className="statusCell">
-                              <span className={`statusPill ${order.fulfillmentStatus}`}>
-                                {statusLabel(order.fulfillmentStatus)}
-                              </span>
-                              <div className="statusActions">
-                                {order.fulfillmentStatus !== "paid" && (
-                                  <form action="/api/admin/order-status" method="post">
-                                    <input type="hidden" name="session_id" value={order.id} />
-                                    <input type="hidden" name="status" value="paid" />
-                                    <button type="submit">Paid</button>
-                                  </form>
-                                )}
-                                {order.fulfillmentStatus !== "ready" && (
-                                  <form action="/api/admin/order-status" method="post">
-                                    <input type="hidden" name="session_id" value={order.id} />
-                                    <input type="hidden" name="status" value="ready" />
-                                    <button type="submit">Ready</button>
-                                  </form>
-                                )}
-                                {order.fulfillmentStatus !== "picked_up" && (
-                                  <form action="/api/admin/order-status" method="post">
-                                    <input type="hidden" name="session_id" value={order.id} />
-                                    <input type="hidden" name="status" value="picked_up" />
-                                    <button type="submit">Picked Up</button>
-                                  </form>
-                                )}
-                              </div>
+        {pickupDates.map((pickupDate) => {
+          const weekOrders = orders.filter((order) => order.pickupDate === pickupDate);
+          const weekScones = weekOrders.reduce((sum, order) => sum + order.scones, 0);
+          return (
+            <section className="ordersPanel pickupGroup" key={pickupDate}>
+              <div className="ordersHeading">
+                <div><p className="sectionKicker">Pickup week</p><h2>{formatPickupDate(pickupDate)}</h2></div>
+                <small>{weekOrders.length} order{weekOrders.length === 1 ? "" : "s"} · {weekScones} scones</small>
+              </div>
+              <div className="ordersTableWrap">
+                <table className="ordersTable">
+                  <thead><tr><th>Customer</th><th>Order</th><th>Scones</th><th>Paid</th><th>Ordered</th><th>Contact</th><th>Status</th></tr></thead>
+                  <tbody>
+                    {weekOrders.map((order) => (
+                      <tr key={order.id}>
+                        <td><strong>{order.name}</strong><small>{order.email}</small></td>
+                        <td>{order.boxes} × {order.packSize}-pack</td>
+                        <td>{order.scones}</td>
+                        <td>{money(order.amount)}</td>
+                        <td>{dateTime(order.created)}</td>
+                        <td>{formatPhone(order.phone)}</td>
+                        <td>
+                          <div className="statusCell">
+                            <span className={`statusPill ${order.fulfillmentStatus}`}>{statusLabel(order.fulfillmentStatus)}</span>
+                            <div className="statusActions">
+                              {order.fulfillmentStatus !== "paid" && <form action="/api/admin/order-status" method="post"><input type="hidden" name="session_id" value={order.id}/><input type="hidden" name="status" value="paid"/><button type="submit">Paid</button></form>}
+                              {order.fulfillmentStatus !== "ready" && <form action="/api/admin/order-status" method="post"><input type="hidden" name="session_id" value={order.id}/><input type="hidden" name="status" value="ready"/><button type="submit">Ready</button></form>}
+                              {order.fulfillmentStatus !== "picked_up" && <form action="/api/admin/order-status" method="post"><input type="hidden" name="session_id" value={order.id}/><input type="hidden" name="status" value="picked_up"/><button type="submit">Picked Up</button></form>}
                             </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </section>
-            );
-          })
-        )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          );
+        })}
       </div>
     </main>
   );

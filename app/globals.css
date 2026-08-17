@@ -523,3 +523,92 @@ legend { font-weight: 800; margin-bottom: 12px; }
     grid-template-columns: 1fr;
   }
 }
+/* --- Launch details upgrade --- */
+.pickupInstructions {
+  margin: 22px 0 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--cream);
+  text-align: left;
+}
+.pickupInstructions h2 {
+  margin: 0 0 8px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.3rem;
+  font-weight: 500;
+}
+.pickupInstructions p { margin: 6px 0; }
+.pickupInstructions a { color: var(--pumpkin-dark); font-weight: 700; }
+.allergenNotice {
+  margin-top: 16px;
+  padding: 13px 15px;
+  border-left: 4px solid var(--pumpkin);
+  background: #fff7ee;
+  text-align: left;
+  font-size: .86rem;
+}
+.launchChecklist {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 24px;
+  margin-bottom: 18px;
+}
+.launchChecklistHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+.launchChecklistHeading h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  font-size: 1.8rem;
+}
+.launchScore {
+  display: grid;
+  place-items: center;
+  min-width: 64px;
+  min-height: 44px;
+  border-radius: 999px;
+  background: #fff4d6;
+  color: #7a5610;
+  font-weight: 900;
+}
+.launchScore.complete { background: #e4f7e8; color: #1f6a32; }
+.launchChecklistGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+}
+.launchCheckItem {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 13px;
+}
+.launchCheckItem strong, .launchCheckItem small { display: block; }
+.launchCheckItem small { color: var(--muted); margin-top: 4px; line-height: 1.35; }
+.checkIcon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff4d6;
+  color: #7a5610;
+  font-weight: 900;
+}
+.checkIcon.complete { background: #e4f7e8; color: #1f6a32; }
+@media (max-width: 900px) {
+  .launchChecklistGrid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .launchChecklistGrid { grid-template-columns: 1fr; }
+}
