@@ -79,7 +79,7 @@ export default function Home() {
         <div className="heroContent shell">
           <p className="eyebrow">Small-batch • seasonal • preorder only</p>
           <h1>The Pumpkin Scone Co.</h1>
-          <p className="tagline">Pumpkin Scone. Period.</p>
+          <p className="tagline">Pumpkin Scones. Period.</p>
           <p className="heroCopy">
             Soft pumpkin-spice scones finished with a vanilla glaze and a warm pumpkin-spice drizzle.
             Baked fresh for local pickup.
@@ -216,7 +216,7 @@ export default function Home() {
         <div className="shell fineGrid">
           <div>
             <h2>The Pumpkin Scone Co.</h2>
-            <p>Pumpkin Scone. Period.</p>
+            <p>Pumpkin Scones. Period.</p>
           </div>
           <div>
             <strong>Before launch</strong>
