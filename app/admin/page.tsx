@@ -2,6 +2,8 @@ import Stripe from "stripe";
 
 export const dynamic = "force-dynamic";
 
+type FulfillmentStatus = "paid" | "ready" | "picked_up";
+
 type OrderRow = {
   id: string;
   created: number;
@@ -12,7 +14,7 @@ type OrderRow = {
   boxes: number;
   scones: number;
   amount: number;
-  paymentStatus: string;
+  fulfillmentStatus: FulfillmentStatus;
 };
 
 function money(cents: number) {
@@ -30,6 +32,28 @@ function dateTime(unix: number) {
   }).format(new Date(unix * 1000));
 }
 
+function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const normalized = digits.length === 11 && digits.startsWith("1")
+    ? digits.slice(1)
+    : digits;
+
+  if (normalized.length !== 10) return value || "—";
+
+  return `(${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6)}`;
+}
+
+function normalizeStatus(value?: string | null): FulfillmentStatus {
+  if (value === "ready" || value === "picked_up") return value;
+  return "paid";
+}
+
+function statusLabel(status: FulfillmentStatus) {
+  if (status === "ready") return "Ready";
+  if (status === "picked_up") return "Picked Up";
+  return "Paid";
+}
+
 export default async function AdminPage() {
   const secretKey = process.env.STRIPE_SECRET_KEY;
 
@@ -45,6 +69,7 @@ export default async function AdminPage() {
   }
 
   const stripe = new Stripe(secretKey);
+  const isTestMode = secretKey.startsWith("sk_test_");
 
   const sessions = await stripe.checkout.sessions.list({
     limit: 100,
@@ -82,7 +107,9 @@ export default async function AdminPage() {
           Number(session.metadata?.total_scones) ||
           packSize * boxes,
         amount: session.amount_total || 0,
-        paymentStatus: session.payment_status,
+        fulfillmentStatus: normalizeStatus(
+          session.metadata?.fulfillment_status
+        ),
       };
     });
 
@@ -96,15 +123,30 @@ export default async function AdminPage() {
     .reduce((sum, order) => sum + order.boxes, 0);
   const batches = Math.ceil(totalScones / 8);
 
+  const paidCount = orders.filter(
+    (order) => order.fulfillmentStatus === "paid"
+  ).length;
+  const readyCount = orders.filter(
+    (order) => order.fulfillmentStatus === "ready"
+  ).length;
+  const pickedUpCount = orders.filter(
+    (order) => order.fulfillmentStatus === "picked_up"
+  ).length;
+
   return (
     <main className="adminPage">
       <div className="adminShell">
         <div className="adminHeader">
           <div>
-            <p className="sectionKicker">The Pumpkin Scone Co.</p>
+            <div className="adminTitleLine">
+              <p className="sectionKicker">The Pumpkin Scone Co.</p>
+              <span className={isTestMode ? "modeBadge test" : "modeBadge live"}>
+                {isTestMode ? "Stripe Sandbox" : "LIVE PAYMENTS"}
+              </span>
+            </div>
             <h1>Order Dashboard</h1>
             <p>
-              Paid Stripe orders from the current sandbox/live Stripe account.
+              Paid Stripe orders and pickup status for your scone orders.
             </p>
           </div>
           <a className="primaryButton" href="/">
@@ -136,6 +178,24 @@ export default async function AdminPage() {
           <div>
             <span>Revenue</span>
             <strong>{money(totalRevenue)}</strong>
+          </div>
+        </section>
+
+        <section className="workflowStats">
+          <div>
+            <span className="statusDot paid" />
+            <b>{paidCount}</b>
+            <small>Paid / to prepare</small>
+          </div>
+          <div>
+            <span className="statusDot ready" />
+            <b>{readyCount}</b>
+            <small>Ready for pickup</small>
+          </div>
+          <div>
+            <span className="statusDot picked" />
+            <b>{pickedUpCount}</b>
+            <small>Picked up</small>
           </div>
         </section>
 
@@ -184,6 +244,7 @@ export default async function AdminPage() {
                     <th>Paid</th>
                     <th>Ordered</th>
                     <th>Contact</th>
+                    <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -199,7 +260,40 @@ export default async function AdminPage() {
                       <td>{order.scones}</td>
                       <td>{money(order.amount)}</td>
                       <td>{dateTime(order.created)}</td>
-                      <td>{order.phone || "—"}</td>
+                      <td>{formatPhone(order.phone)}</td>
+                      <td>
+                        <div className="statusCell">
+                          <span className={`statusPill ${order.fulfillmentStatus}`}>
+                            {statusLabel(order.fulfillmentStatus)}
+                          </span>
+
+                          <div className="statusActions">
+                            {order.fulfillmentStatus !== "paid" && (
+                              <form action="/api/admin/order-status" method="post">
+                                <input type="hidden" name="session_id" value={order.id} />
+                                <input type="hidden" name="status" value="paid" />
+                                <button type="submit">Paid</button>
+                              </form>
+                            )}
+
+                            {order.fulfillmentStatus !== "ready" && (
+                              <form action="/api/admin/order-status" method="post">
+                                <input type="hidden" name="session_id" value={order.id} />
+                                <input type="hidden" name="status" value="ready" />
+                                <button type="submit">Ready</button>
+                              </form>
+                            )}
+
+                            {order.fulfillmentStatus !== "picked_up" && (
+                              <form action="/api/admin/order-status" method="post">
+                                <input type="hidden" name="session_id" value={order.id} />
+                                <input type="hidden" name="status" value="picked_up" />
+                                <button type="submit">Picked Up</button>
+                              </form>
+                            )}
+                          </div>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

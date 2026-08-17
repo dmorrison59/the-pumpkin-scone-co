@@ -335,3 +335,135 @@ legend { font-weight: 800; margin-bottom: 12px; }
     grid-template-columns: 1fr;
   }
 }
+
+/* --- Order status upgrade --- */
+.adminTitleLine {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.modeBadge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: .68rem;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.modeBadge.test {
+  background: #fff0c7;
+  color: #7a5610;
+  border: 1px solid #ecd18a;
+}
+
+.modeBadge.live {
+  background: #e4f7e8;
+  color: #1f6a32;
+  border: 1px solid #a9ddb6;
+}
+
+.workflowStats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 0 0 18px;
+}
+
+.workflowStats > div {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 10px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px 18px;
+}
+
+.workflowStats b {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.45rem;
+  font-weight: 500;
+}
+
+.workflowStats small {
+  color: var(--muted);
+}
+
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.statusDot.paid { background: #b7791f; }
+.statusDot.ready { background: #2f855a; }
+.statusDot.picked { background: #4a5568; }
+
+.statusCell {
+  display: grid;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.statusPill {
+  width: fit-content;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: .72rem;
+  font-weight: 800;
+}
+
+.statusPill.paid {
+  background: #fff4d6;
+  color: #7a5610;
+}
+
+.statusPill.ready {
+  background: #e4f7e8;
+  color: #1f6a32;
+}
+
+.statusPill.picked_up {
+  background: #edf0f3;
+  color: #39414a;
+}
+
+.statusActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.statusActions form {
+  margin: 0;
+}
+
+.statusActions button {
+  border: 1px solid var(--line);
+  background: white;
+  color: var(--espresso);
+  border-radius: 999px;
+  padding: 6px 9px;
+  font-size: .7rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.statusActions button:hover {
+  border-color: var(--pumpkin);
+  color: var(--pumpkin-dark);
+}
+
+@media (max-width: 700px) {
+  .workflowStats {
+    grid-template-columns: 1fr;
+  }
+}
