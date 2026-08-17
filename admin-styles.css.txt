@@ -1,0 +1,218 @@
+
+/* --- Admin dashboard --- */
+.adminPage {
+  min-height: 100vh;
+  background: var(--cream);
+  padding: 42px 20px 80px;
+}
+
+.adminShell {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.adminHeader {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 30px;
+}
+
+.adminHeader h1,
+.ordersHeading h2,
+.productionCard h2 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 500;
+}
+
+.adminHeader h1 {
+  font-size: clamp(2.5rem, 5vw, 4.5rem);
+}
+
+.adminHeader > div > p:last-child {
+  color: var(--muted);
+  margin-bottom: 0;
+}
+
+.adminStats {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.adminStats > div {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 20px;
+}
+
+.adminStats span,
+.successOrder span {
+  display: block;
+  color: var(--muted);
+  font-size: .78rem;
+  margin-bottom: 8px;
+}
+
+.adminStats strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.8rem;
+  font-weight: 500;
+}
+
+.productionCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 30px;
+  background: var(--espresso);
+  color: white;
+  border-radius: 24px;
+  padding: 28px;
+  margin-bottom: 18px;
+}
+
+.productionCard h2 {
+  font-size: 2rem;
+}
+
+.productionNumbers {
+  display: flex;
+  gap: 28px;
+}
+
+.productionNumbers span {
+  display: grid;
+  gap: 3px;
+  color: rgba(255,255,255,.72);
+  font-size: .8rem;
+}
+
+.productionNumbers b {
+  color: white;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.7rem;
+  font-weight: 500;
+}
+
+.ordersPanel {
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  overflow: hidden;
+}
+
+.ordersHeading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 26px;
+  border-bottom: 1px solid var(--line);
+}
+
+.ordersHeading h2 {
+  font-size: 2rem;
+}
+
+.ordersHeading small {
+  color: var(--muted);
+}
+
+.ordersTableWrap {
+  overflow-x: auto;
+}
+
+.ordersTable {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.ordersTable th,
+.ordersTable td {
+  padding: 17px 20px;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.ordersTable th {
+  font-size: .72rem;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--muted);
+}
+
+.ordersTable td {
+  font-size: .9rem;
+}
+
+.ordersTable td strong,
+.ordersTable td small {
+  display: block;
+}
+
+.ordersTable td small {
+  margin-top: 4px;
+  color: var(--muted);
+}
+
+.emptyOrders {
+  padding: 40px 26px;
+  color: var(--muted);
+}
+
+.successOrder {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 26px 0;
+  text-align: left;
+}
+
+.successOrder > div {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.successOrder strong {
+  display: block;
+}
+
+.successNote {
+  font-size: .9rem;
+}
+
+@media (max-width: 950px) {
+  .adminStats {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .productionCard {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 600px) {
+  .adminHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .adminStats {
+    grid-template-columns: 1fr 1fr;
+  }
+  .productionNumbers {
+    width: 100%;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .successOrder {
+    grid-template-columns: 1fr;
+  }
+}
