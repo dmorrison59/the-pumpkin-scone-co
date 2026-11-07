@@ -38,6 +38,27 @@ async function sendEmail({
   }
 }
 
+function emailRow(label: string, value: string): string {
+  return `<div style="padding:10px 0;border-bottom:1px solid #eadbcc"><span style="font-size:12px;color:#755a4a">${escapeHtml(label)}</span><br><strong style="font-size:15px;color:#36261f">${escapeHtml(value)}</strong></div>`;
+}
+
+function emailLayout(heading: string, greeting: string, details: string, footer: string): string {
+  return `<!doctype html><html lang="en"><body style="margin:0;padding:24px;background:#fcf4e9;font-family:Arial,Helvetica,sans-serif;color:#36261f">
+    <div style="max-width:560px;margin:auto;background:#fff;border:1px solid #ebdbca;border-radius:16px;overflow:hidden">
+      <div style="background:#3e2b23;padding:28px 30px;color:#fff9f0">
+        <div style="letter-spacing:2px;text-transform:uppercase;font-size:11px;color:#efbc92">Small-batch · Seasonal · Preorder only</div>
+        <div style="font-family:Georgia,serif;font-size:29px;margin-top:10px">The Pumpkin Scone Co.</div>
+      </div>
+      <div style="padding:28px 30px">
+        <h1 style="font-family:Georgia,serif;color:#bf5b2c;font-weight:normal;font-size:27px;margin:0 0 16px">${escapeHtml(heading)}</h1>
+        <p style="line-height:1.6;margin:0 0 20px">${escapeHtml(greeting)}</p>
+        <div style="padding:12px 18px;border:1px solid #ebdbca;border-radius:12px;background:#fffbf6">${details}</div>
+        <p style="font-size:13px;line-height:1.6;color:#755a4a;margin-top:22px">${escapeHtml(footer)}</p>
+      </div>
+    </div>
+  </body></html>`;
+}
+
 export async function POST(request: Request) {
   const stripeKey = process.env.STRIPE_SECRET_KEY;
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
@@ -84,14 +105,25 @@ export async function POST(request: Request) {
     ? "See Stripe dashboard"
     : new Intl.NumberFormat("en-US", { style: "currency", currency: session.currency || "usd" }).format(session.amount_total / 100);
 
-  const details = `
-    <h2>Order confirmed</h2>
-    <p><strong>Order:</strong> ${escapeHtml(quantity)} × ${escapeHtml(packSize)}-pack pumpkin scones</p>
-    <p><strong>Total paid:</strong> ${escapeHtml(amount)}</p>
-    <p><strong>Pickup date:</strong> ${escapeHtml(pickupDate)}</p>
-    <p><strong>Pickup window:</strong> ${escapeHtml(pickupWindow)}</p>
-    <p><strong>Stripe order reference:</strong> ${escapeHtml(session.id)}</p>
-  `;
+  const details = [
+    emailRow("Order", `${quantity} × ${packSize}-pack pumpkin scones`),
+    emailRow("Total paid", amount),
+    emailRow("Pickup date", pickupDate),
+    emailRow("Pickup window", pickupWindow),
+    emailRow("Stripe order reference", session.id),
+  ].join("");
+  const customerHtml = emailLayout(
+    "You’re on the bake list!",
+    `Hi ${customerName}, thanks for ordering. Your payment has been confirmed.`,
+    details,
+    "We’ll contact you with final pickup instructions. Keep this email for your records."
+  );
+  const ownerHtml = emailLayout(
+    "A new order is in!",
+    "A customer has completed a paid order. Here’s what to prepare:",
+    [emailRow("Customer", customerName), emailRow("Email", customerEmail), emailRow("Phone", phone), details].join(""),
+    "Order details are also available in your Stripe dashboard."
+  );
 
   try {
     // Separate keys make Stripe webhook retries safe against duplicate email sends.
@@ -101,13 +133,13 @@ export async function POST(request: Request) {
       sendEmail({
         to: customerEmail,
         subject: "Your Pumpkin Scone Co. order is confirmed",
-        html: `<p>Hi ${escapeHtml(customerName)},</p><p>Thanks for your order!</p>${details}<p>We'll contact you with any final pickup instructions.</p>`,
+        html: customerHtml,
         idempotencyKey: `pumpkin-customer-${session.id}`,
       }),
       sendEmail({
         to: OWNER,
         subject: "🎃 New paid Pumpkin Scone Co. order",
-        html: `<h2>New paid order</h2><p><strong>Customer:</strong> ${escapeHtml(customerName)}</p><p><strong>Email:</strong> ${escapeHtml(customerEmail)}</p><p><strong>Phone:</strong> ${escapeHtml(phone)}</p>${details}`,
+        html: ownerHtml,
         idempotencyKey: `pumpkin-owner-${session.id}`,
       }),
     ]);
