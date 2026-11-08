@@ -1,107 +1,96 @@
 import "server-only";
+import { neon } from "@neondatabase/serverless";
 
 export type PickupWindow = {
-  id: string;
-  label: string;
-  address: string;
-  pickup_date: string;
-  start_time: string;
-  end_time: string;
-  cutoff_at: string;
-  max_orders: number;
-  reserved_orders: number;
-  confirmed_orders: number;
-  is_open: boolean;
+  id: string; label: string; address: string; pickup_date: string;
+  start_time: string; end_time: string; cutoff_at: string;
+  max_orders: number; reserved_orders: number; confirmed_orders: number; is_open: boolean;
 };
-
-const base = () => process.env.PICKUP_SUPABASE_URL?.replace(/\/$/, "");
-const key = () => process.env.PICKUP_SUPABASE_SERVICE_ROLE_KEY;
-export function windowsConfigured() { return Boolean(base() && key()); }
-
-async function request(path: string, init: RequestInit = {}) {
-  if (!windowsConfigured()) throw new Error("Pickup database is not configured");
-  const response = await fetch(`${base()}/rest/v1/${path}`, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      apikey: key()!,
-      Authorization: `Bearer ${key()}`,
-      ...(init.headers || {}),
-    },
-  });
-  if (!response.ok) throw new Error(`Pickup database error: ${response.status}`);
-  return response;
-}
-
-export async function listPickupWindows(): Promise<PickupWindow[]> {
-  if (!windowsConfigured()) return [];
-  const response = await request("pickup_windows?select=*&order=pickup_date.asc,start_time.asc&limit=200");
-  return response.json();
-}
-
-export function publicWindow(window: PickupWindow) {
-  const cutoff = new Date(window.cutoff_at).getTime();
-  // Date comparison uses America/New_York; cutoff is an absolute timestamp.
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-  }).formatToParts(new Date());
-  const dates = Object.fromEntries(parts.filter(p => p.type !== "literal").map(p => [p.type, p.value]));
-  const day = `${dates.year}-${dates.month}-${dates.day}`;
-  return window.is_open && window.pickup_date >= day &&
-    Number.isFinite(cutoff) && cutoff > Date.now() &&
-    window.confirmed_orders + window.reserved_orders < window.max_orders;
-}
-
-export async function savePickupWindow(input: Partial<PickupWindow> & { id?: string }) {
-  const fields = ["label","address","pickup_date","start_time","end_time","cutoff_at","max_orders","is_open"] as const;
-  const record: Record<string, unknown> = {};
-  for (const field of fields) if (input[field] !== undefined) record[field] = input[field];
-  const updating = Boolean(input.id);
-  const path = updating ? `pickup_windows?id=eq.${encodeURIComponent(input.id!)}` : "pickup_windows";
-  const response = await request(path, {
-    method: updating ? "PATCH" : "POST",
-    headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-    body: JSON.stringify(record),
-  });
-  const result = await response.json();
-  if (result.length !== 1) throw new Error("Pickup window was not saved");
-  return result[0] as PickupWindow;
-}
-
 export type PickupReservation = {
   reservation_token: string; pickup_label: string; pickup_address: string;
   pickup_date: string; pickup_window: string; expires_at: string;
 };
 
-async function rpc(name: string, body: Record<string, unknown>): Promise<unknown> {
-  const response = await request(`rpc/${name}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return response.json();
+export function windowsConfigured() {
+  return Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL);
+}
+function db() {
+  const url = process.env.DATABASE_URL || process.env.POSTGRES_URL;
+  if (!url) throw new Error("Neon PostgreSQL is not configured");
+  return neon(url);
+}
+
+// Neon HTTP driver does not permit query identifiers to be dynamically interpolated.
+// Keep SQL statements static and use parameter placeholders via tagged templates.
+export async function listPickupWindows(): Promise<PickupWindow[]> {
+  if (!windowsConfigured()) return [];
+  const sql = db();
+  const rows = await sql`SELECT id, label, address, pickup_date::text AS pickup_date,
+    to_char(start_time, 'HH24:MI') AS start_time,
+    to_char(end_time, 'HH24:MI') AS end_time,
+    cutoff_at::text AS cutoff_at, max_orders, reserved_orders, confirmed_orders, is_open
+    FROM public.pickup_windows ORDER BY pickup_date, start_time LIMIT 200`;
+  return rows as PickupWindow[];
+}
+
+export function publicWindow(window: PickupWindow) {
+  const cutoff = new Date(window.cutoff_at).getTime();
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const dates = Object.fromEntries(parts.filter(p => p.type !== "literal").map(p => [p.type, p.value]));
+  const day = `${dates.year}-${dates.month}-${dates.day}`;
+  return window.is_open && window.pickup_date >= day && Number.isFinite(cutoff) &&
+    cutoff > Date.now() && window.confirmed_orders + window.reserved_orders < window.max_orders;
+}
+
+export async function savePickupWindow(input: Partial<PickupWindow> & { id?: string }): Promise<PickupWindow> {
+  const sql = db();
+  const label = input.label!, address = input.address!, pickupDate = input.pickup_date!;
+  const startTime = input.start_time!, endTime = input.end_time!, cutoff = input.cutoff_at!;
+  const maxOrders = input.max_orders!, isOpen = input.is_open!;
+  const rows = input.id ? await sql`
+    UPDATE public.pickup_windows SET label=${label}, address=${address}, pickup_date=${pickupDate}::date,
+      start_time=${startTime}::time, end_time=${endTime}::time, cutoff_at=${cutoff}::timestamptz,
+      max_orders=${maxOrders}, is_open=${isOpen}
+    WHERE id=${input.id}::uuid
+    RETURNING id, label, address, pickup_date::text AS pickup_date,
+      to_char(start_time, 'HH24:MI') AS start_time, to_char(end_time, 'HH24:MI') AS end_time,
+      cutoff_at::text AS cutoff_at, max_orders, reserved_orders, confirmed_orders, is_open
+  ` : await sql`
+    INSERT INTO public.pickup_windows(label,address,pickup_date,start_time,end_time,cutoff_at,max_orders,is_open)
+    VALUES (${label},${address},${pickupDate}::date,${startTime}::time,${endTime}::time,
+      ${cutoff}::timestamptz,${maxOrders},${isOpen})
+    RETURNING id, label, address, pickup_date::text AS pickup_date,
+      to_char(start_time, 'HH24:MI') AS start_time, to_char(end_time, 'HH24:MI') AS end_time,
+      cutoff_at::text AS cutoff_at, max_orders, reserved_orders, confirmed_orders, is_open
+  `;
+  if (rows.length !== 1) throw new Error("Pickup window was not saved");
+  return rows[0] as PickupWindow;
 }
 
 export async function reservePickupWindow(id: string): Promise<PickupReservation> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid pickup window");
-  const result = await rpc("reserve_pickup_window", { p_window_id: id });
-  if (!Array.isArray(result) || result.length !== 1 || typeof result[0].reservation_token !== "string") {
-    throw new Error("No pickup reservations available");
-  }
-  return result[0] as PickupReservation;
+  const sql = db();
+  const rows = await sql`SELECT reservation_token::text, pickup_label, pickup_address,
+    pickup_date::text, pickup_window, expires_at::text
+    FROM public.reserve_pickup_window(${id}::uuid)`;
+  if (rows.length !== 1) throw new Error("Pickup window has no availability");
+  return rows[0] as PickupReservation;
 }
-
 export async function attachPickupCheckout(token: string, sessionId: string): Promise<boolean> {
-  return (await rpc("attach_pickup_checkout", { p_token: token, p_session_id: sessionId })) === true;
+  const sql = db();
+  const rows = await sql`SELECT public.attach_pickup_checkout(${token}::uuid,${sessionId}) AS ok`;
+  return rows[0]?.ok === true;
 }
-
 export async function confirmPaidPickup(sessionId: string): Promise<boolean> {
-  return (await rpc("confirm_paid_pickup", { p_session_id: sessionId })) === true;
+  const sql = db();
+  const rows = await sql`SELECT public.confirm_paid_pickup(${sessionId}) AS ok`;
+  return rows[0]?.ok === true;
 }
-
 export async function releasePickup(input: { token?: string; sessionId?: string }): Promise<boolean> {
-  return (await rpc("release_pickup", {
-    p_token: input.token ?? null,
-    p_session_id: input.sessionId ?? null,
-  })) === true;
+  if (Boolean(input.token) === Boolean(input.sessionId)) throw new Error("Supply one reservation identifier");
+  const sql = db();
+  const rows = await sql`SELECT public.release_pickup(${input.token ?? null}::uuid,${input.sessionId ?? null}) AS ok`;
+  return rows[0]?.ok === true;
 }
