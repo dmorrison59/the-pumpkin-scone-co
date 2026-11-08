@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { listPickupWindows, windowsConfigured } from "../../lib/pickup-windows-store";
 import PickupWindowsForm from "./pickup-windows-form";
+import type { PickupWindow } from "../../lib/pickup-windows-store";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Pickup Schedule | Pumpkin Scone Admin", robots: { index: false } };
 export default async function PickupSchedulePage() {
   const configured = windowsConfigured();
-  let windows = [];
+  let windows: PickupWindow[] = [];
   let error = false;
   try { windows = await listPickupWindows(); } catch { error = true; }
   return <main style={{maxWidth:900,margin:"32px auto",padding:20,fontFamily:"Arial,sans-serif",color:"#3f2c24"}}>
