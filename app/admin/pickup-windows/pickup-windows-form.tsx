@@ -18,6 +18,19 @@ export default function PickupWindowsForm({ initialWindows, enabled }: { initial
   const [windows, setWindows] = useState(initialWindows);
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  const [reconciling, setReconciling] = useState(false);
+  async function reconcile() {
+    setReconciling(true); setMessage("");
+    try {
+      const response = await fetch("/api/admin/pickup-reconcile", { method: "POST" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Reconciliation failed");
+      setMessage(`Checked ${result.inspected} Stripe sessions; ${result.confirmed} confirmed, ${result.released} released, ${result.deferred} deferred, ${result.errors} errors.`);
+      const updated = await fetch("/api/admin/pickup-windows");
+      if (updated.ok) setWindows((await updated.json()).windows);
+    } catch (e) { setMessage(e instanceof Error ? e.message : "Reconciliation failed"); }
+    finally { setReconciling(false); }
+  }
   function edit(w: PickupWindow) {
     setForm({ id: w.id, label: w.label, address: w.address, pickup_date: w.pickup_date,
       start_time: w.start_time.slice(0,5), end_time: w.end_time.slice(0,5),
@@ -41,6 +54,7 @@ export default function PickupWindowsForm({ initialWindows, enabled }: { initial
   const label: CSSProperties = {display:"grid",gap:6,marginBottom:13};
   return <div>
     <h2>Scheduled pickup windows</h2>
+    <button type="button" disabled={!enabled || reconciling} onClick={reconcile} style={{padding:10,marginBottom:14}}>{reconciling?"Checking Stripe...":"Reconcile expired Stripe reservations"}</button>
     {windows.length===0 ? <p>No pickup windows created yet.</p> : windows.map(w=><div key={w.id} style={{padding:14,marginBottom:10,border:"1px solid #e1cdbb",borderRadius:9}}>
       <strong>{w.label} — {w.pickup_date}</strong><br/>{w.address}<br/>
       {w.start_time.slice(0,5)}–{w.end_time.slice(0,5)} · {w.is_open?"Published":"Closed"} · {w.confirmed_orders} confirmed
