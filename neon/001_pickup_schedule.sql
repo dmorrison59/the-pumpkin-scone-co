@@ -60,10 +60,10 @@ begin
 
   -- Clean up unlinked holds only. Attached Stripe sessions require explicit reconciliation.
   with expired as (
-    update public.pickup_reservations
+    update public.pickup_reservations AS pr
     set status = 'released'
-    where window_id = p_window_id and status = 'reserved'
-      and checkout_session_id is null and expires_at < now()
+    where pr.window_id = p_window_id and pr.status = 'reserved'
+      and pr.checkout_session_id is null and pr.expires_at < now()
     returning id
   )
   select count(*) into expired_count from expired;
