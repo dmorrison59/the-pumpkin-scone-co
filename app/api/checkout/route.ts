@@ -82,6 +82,8 @@ export async function POST(request: Request) {
         quantity,
       };
 
+  let releaseIsSafe = true;
+  let stripeSessionId: string | null = null;
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -111,18 +113,26 @@ export async function POST(request: Request) {
       allow_promotion_codes: false,
     });
 
-    if (!session.url) {
-      if (reservation) await stripe.checkout.sessions.expire(session.id).catch(() => undefined);
-      throw new Error("Stripe did not return a checkout URL");
-    }
-    if (reservation && !(await attachPickupCheckout(reservation.reservation_token, session.id))) {
-      await stripe.checkout.sessions.expire(session.id).catch(() => undefined);
-      throw new Error("Pickup reservation could not be attached to checkout");
+    stripeSessionId = session.id;
+    releaseIsSafe = false;
+    if (!session.url || (reservation && !(await attachPickupCheckout(reservation.reservation_token, session.id)))) {
+      try {
+        const expired = await stripe.checkout.sessions.expire(session.id);
+        releaseIsSafe = expired.status === "expired";
+      } catch {
+        // Never free capacity unless Stripe has actually expired the session.
+      }
+      throw new Error("Stripe checkout could not reserve the pickup");
     }
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
-    if (reservation) await releasePickup({ token: reservation.reservation_token }).catch(() => undefined);
+    if (reservation && releaseIsSafe) {
+      await releasePickup({ token: reservation.reservation_token }).catch(() => undefined);
+    }
+    if (reservation && stripeSessionId && !releaseIsSafe) {
+      console.error("Stripe session may still be open; pickup capacity retained for reconciliation", stripeSessionId);
+    }
     console.error("Stripe checkout error", error);
     return NextResponse.json(
       { error: "Unable to start Stripe checkout. Check your Stripe key and try again." },
