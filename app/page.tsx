@@ -8,8 +8,18 @@ type PublicPickupWindow = {
   id: string; label: string; address: string; pickup_date: string;
   start_time: string; end_time: string; remaining: number; cutoff_at: string;
 };
+const formatPickupDate = (date: string) =>
+  new Intl.DateTimeFormat("en-US", {
+    weekday: "short", month: "short", day: "numeric", year: "numeric", timeZone: "UTC",
+  }).format(new Date(`${date}T12:00:00Z`));
+
+const formatPickupTime = (time: string) => {
+  const [hourText, minuteText] = time.slice(0, 5).split(":");
+  const hour = Number(hourText);
+  return `${hour % 12 || 12}:${minuteText} ${hour >= 12 ? "PM" : "AM"}`;
+};
 const formatWindow = (w: PublicPickupWindow) =>
-  `${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}`;
+  `${formatPickupTime(w.start_time)}–${formatPickupTime(w.end_time)}`;
 
 
 type PickupPlan = {
@@ -51,6 +61,7 @@ export default function Home() {
       .catch(() => setPickupPlan(null));
   }, []);
 
+  const selectedPickup = pickupWindows.find((window) => window.id === selectedPickupId);
   const selected = products[pack];
   const total = selected.price * quantity;
   const totalScones = selected.scones * quantity;
@@ -177,16 +188,27 @@ export default function Home() {
             {pickupMode && <fieldset>
               <legend>Choose a pickup location and time window</legend>
               {pickupWindows.length === 0 ? <p role="status">No pickup windows are currently available. Please check back soon.</p> :
-                <div className="packChoices">{pickupWindows.map((w) =>
-                  <label key={w.id} className={`packChoice ${selectedPickupId === w.id ? "selected" : ""}`}>
-                    <input type="radio" required name="pickup_window" checked={selectedPickupId === w.id}
-                      value={w.id} onChange={() => setSelectedPickupId(w.id)} />
-                    <span><strong>{w.label} · {w.pickup_date}</strong>
-                      <small>{w.address}</small>
-                      <small>{formatWindow(w)} · {w.remaining} order spaces remaining</small>
-                    </span>
+                <>
+                  <label className="fieldLabel" htmlFor="pickup-window-select">
+                    Available pickup dates and locations
+                    <select id="pickup-window-select" name="pickup_window" required
+                      value={selectedPickupId} onChange={(event) => setSelectedPickupId(event.target.value)}>
+                      <option value="" disabled>Select a pickup location and time window</option>
+                      {pickupWindows.map((window) =>
+                        <option key={window.id} value={window.id}>
+                          {window.label} — {formatPickupDate(window.pickup_date)} · {formatWindow(window)}
+                        </option>
+                      )}
+                    </select>
                   </label>
-                )}</div>}
+                  {selectedPickup && <div className="pickupCard" aria-live="polite">
+                    <span>Your selected pickup</span>
+                    <strong>{selectedPickup.label}</strong>
+                    <small>{formatPickupDate(selectedPickup.pickup_date)} · {formatWindow(selectedPickup)}</small>
+                    <small>{selectedPickup.address}</small>
+                    <small>{selectedPickup.remaining} order spaces remaining · Arrive anytime during this window.</small>
+                  </div>}
+                </>}
             </fieldset>}
             <label className="fieldLabel">
               Quantity
