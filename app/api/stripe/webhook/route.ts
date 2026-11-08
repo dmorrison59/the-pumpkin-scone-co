@@ -82,9 +82,13 @@ export async function POST(request: Request) {
   // Subscribe to checkout.session.expired in Stripe before enabling scheduling.
   if (event.type === "checkout.session.expired") {
     const expired = event.data.object as Stripe.Checkout.Session;
-    if (expired.metadata?.pickup_reservation_token && windowsConfigured()) {
-      try { await releasePickup({ sessionId: expired.id }); }
-      catch { return NextResponse.json({ error: "Could not release expired reservation" }, { status: 500 }); }
+    if (expired.metadata?.pickup_reservation_token) {
+      // Return retryable failure if Neon is down; never acknowledge a lost release.
+      if (!windowsConfigured()) return NextResponse.json({ error: "Pickup database unavailable" }, { status: 503 });
+      try {
+        const released = await releasePickup({ sessionId: expired.id });
+        if (!released) return NextResponse.json({ error: "No associated pickup reservation found" }, { status: 500 });
+      } catch { return NextResponse.json({ error: "Could not release expired reservation" }, { status: 500 }); }
     }
     return NextResponse.json({ received: true });
   }
@@ -137,7 +141,9 @@ export async function POST(request: Request) {
     "You’re on the bake list!",
     `Hi ${customerName}, thanks for ordering. Your payment has been confirmed.`,
     details,
-    "We’ll contact you with final pickup instructions. Keep this email for your records."
+    metadata.pickup_address
+      ? "Please arrive at the listed pickup location during your scheduled window. Keep this email for your records."
+      : "We’ll contact you with final pickup instructions. Keep this email for your records."
   );
   const ownerHtml = emailLayout(
     "A new order is in!",
