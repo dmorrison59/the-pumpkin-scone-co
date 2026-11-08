@@ -18,6 +18,8 @@ type OrderRow = {
   amount: number;
   fulfillmentStatus: FulfillmentStatus;
   pickupDate: string;
+  pickupLocation: string;
+  pickupWindow: string;
 };
 
 function money(cents: number) {
@@ -87,6 +89,8 @@ export default async function AdminPage() {
         amount: session.amount_total || 0,
         fulfillmentStatus: normalizeStatus(session.metadata?.fulfillment_status),
         pickupDate: session.metadata?.pickup_date || inferPickupDate(session.created),
+        pickupLocation: session.metadata?.pickup_location || "Original Saturday schedule",
+        pickupWindow: session.metadata?.pickup_window || "",
       };
     });
 
@@ -123,7 +127,7 @@ export default async function AdminPage() {
             <h1>Order Dashboard</h1>
             <p>Weekly production and pickup status for your paid Stripe orders.</p>
           </div>
-          <a className="primaryButton" href="/">View Website</a>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap"}}><a className="primaryButton" href="/admin/pickup-windows">Manage Pickup Schedule</a><a className="primaryButton" href="/">View Website</a></div>
         </div>
 
         <section className="launchChecklist">
@@ -199,7 +203,7 @@ export default async function AdminPage() {
                     {weekOrders.map((order) => (
                       <tr key={order.id}>
                         <td><strong>{order.name}</strong><small>{order.email}</small></td>
-                        <td>{order.boxes} × {order.packSize}-pack</td>
+                        <td>{order.boxes} × {order.packSize}-pack<small>{order.pickupLocation} · {order.pickupWindow}</small></td>
                         <td>{order.scones}</td>
                         <td>{money(order.amount)}</td>
                         <td>{dateTime(order.created)}</td>

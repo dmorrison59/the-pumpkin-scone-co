@@ -4,6 +4,13 @@ import Image from "next/image";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Pack = "4" | "8";
+type PublicPickupWindow = {
+  id: string; label: string; address: string; pickup_date: string;
+  start_time: string; end_time: string; remaining: number; cutoff_at: string;
+};
+const formatWindow = (w: PublicPickupWindow) =>
+  `${w.start_time.slice(0,5)}–${w.end_time.slice(0,5)}`;
+
 
 type PickupPlan = {
   pickupDate: string;
@@ -26,8 +33,18 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [pickupPlan, setPickupPlan] = useState<PickupPlan | null>(null);
+  const [pickupWindows, setPickupWindows] = useState<PublicPickupWindow[]>([]);
+  const [pickupMode, setPickupMode] = useState(false);
+  const [selectedPickupId, setSelectedPickupId] = useState("");
 
   useEffect(() => {
+    fetch("/api/pickup-windows", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((data) => {
+        setPickupMode(data.enabled === true);
+        setPickupWindows(Array.isArray(data.windows) ? data.windows : []);
+      })
+      .catch(() => { setPickupMode(true); setPickupWindows([]); });
     fetch("/api/pickup-plan", { cache: "no-store" })
       .then((response) => response.json())
       .then((data) => setPickupPlan(data))
@@ -52,7 +69,7 @@ export default function Home() {
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pack, quantity, name, email, phone }),
+        body: JSON.stringify({ pack, quantity, name, email, phone, ...(pickupMode ? { pickup_window_id: selectedPickupId } : {}) }),
       });
 
       const data = await response.json();
@@ -123,14 +140,11 @@ export default function Home() {
 
             <div className="pickupCard">
               <span>Next pickup</span>
-              <strong>
-                {pickupPlan
-                  ? `Saturday, ${pickupPlan.pickupDisplay} • ${pickupPlan.pickupWindow}`
-                  : "Saturday • 9:00 AM–1:00 PM"}
-              </strong>
-              <small>
-                Thursday 8:00 PM ET is the cutoff for that Saturday. Orders after the cutoff roll to the following Saturday.
-              </small>
+              {pickupMode ? <><strong>Choose from our published pickup windows</strong>
+                <small>We set the date, location and shared time window. No individual appointments.</small></> : <>
+                <strong>{pickupPlan ? `Saturday, ${pickupPlan.pickupDisplay} • ${pickupPlan.pickupWindow}` : "Saturday • 9:00 AM–1:00 PM"}</strong>
+                <small>Thursday 8:00 PM ET is the cutoff for that Saturday. Orders after the cutoff roll to the following Saturday.</small>
+              </>}
             </div>
           </div>
 
@@ -160,6 +174,20 @@ export default function Home() {
               </div>
             </fieldset>
 
+            {pickupMode && <fieldset>
+              <legend>Choose a pickup location and time window</legend>
+              {pickupWindows.length === 0 ? <p role="status">No pickup windows are currently available. Please check back soon.</p> :
+                <div className="packChoices">{pickupWindows.map((w) =>
+                  <label key={w.id} className={`packChoice ${selectedPickupId === w.id ? "selected" : ""}`}>
+                    <input type="radio" required name="pickup_window" checked={selectedPickupId === w.id}
+                      value={w.id} onChange={() => setSelectedPickupId(w.id)} />
+                    <span><strong>{w.label} · {w.pickup_date}</strong>
+                      <small>{w.address}</small>
+                      <small>{formatWindow(w)} · {w.remaining} order spaces remaining</small>
+                    </span>
+                  </label>
+                )}</div>}
+            </fieldset>}
             <label className="fieldLabel">
               Quantity
               <select value={quantity} onChange={(e) => setQuantity(Number(e.target.value))}>
@@ -187,13 +215,13 @@ export default function Home() {
               <strong>${total.toFixed(2)}</strong>
             </div>
 
-            {pickupPlan && (
+            {!pickupMode && pickupPlan && (
               <p className="checkoutPickup">
                 Pickup: Saturday, {pickupPlan.pickupDisplay} · {pickupPlan.pickupWindow}
               </p>
             )}
 
-            <button className="primaryButton checkoutButton" type="submit" disabled={loading}>
+            <button className="primaryButton checkoutButton" type="submit" disabled={loading || (pickupMode && (!selectedPickupId || pickupWindows.length === 0))}>
               {loading ? "Opening secure checkout…" : checkoutText}
             </button>
             <p className="secureNote">Secure payment is completed on Stripe&apos;s hosted checkout page.</p>

@@ -1,6 +1,7 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
 import { getPickupPlan } from "../../lib/pickup";
+import { attachPickupCheckout, releasePickup, reservePickupWindow, windowsConfigured, type PickupReservation } from "../../lib/pickup-windows-store";
 
 type Pack = "4" | "8";
 
@@ -10,6 +11,7 @@ type CheckoutBody = {
   name?: string;
   email?: string;
   phone?: string;
+  pickup_window_id?: string;
 };
 
 const PACKS = {
@@ -51,7 +53,19 @@ export async function POST(request: Request) {
   const product = PACKS[pack];
   const configuredPriceId = process.env[product.envPrice];
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+  const pickupSchedulingEnabled = process.env.PICKUP_SCHEDULING_ENABLED === "true";
+  if (pickupSchedulingEnabled && !windowsConfigured()) {
+    return NextResponse.json({ error: "Pickup scheduling is temporarily unavailable." }, { status: 503 });
+  }
   const pickupPlan = getPickupPlan();
+  let reservation: PickupReservation | null = null;
+  if (pickupSchedulingEnabled) {
+    if (!body.pickup_window_id) {
+      return NextResponse.json({ error: "Please choose an available pickup location and window." }, { status: 400 });
+    }
+    try { reservation = await reservePickupWindow(body.pickup_window_id); }
+    catch { return NextResponse.json({ error: "That pickup window is no longer available. Please choose another." }, { status: 409 }); }
+  }
 
   const lineItem: Stripe.Checkout.SessionCreateParams.LineItem = configuredPriceId
     ? { price: configuredPriceId, quantity }
@@ -68,6 +82,8 @@ export async function POST(request: Request) {
         quantity,
       };
 
+  let releaseIsSafe = true;
+  let stripeSessionId: string | null = null;
   try {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
@@ -81,24 +97,42 @@ export async function POST(request: Request) {
         pack_size: pack,
         box_quantity: String(quantity),
         total_scones: String(Number(pack) * quantity),
-        pickup_date: pickupPlan.pickupDate,
-        pickup_window: pickupPlan.pickupWindow,
+        pickup_date: reservation?.pickup_date ?? pickupPlan.pickupDate,
+        pickup_window: reservation?.pickup_window ?? pickupPlan.pickupWindow,
+        ...(reservation ? {
+          pickup_location: reservation.pickup_label,
+          pickup_address: reservation.pickup_address,
+          pickup_window_id: body.pickup_window_id!,
+          pickup_reservation_token: reservation.reservation_token,
+        } : {}),
         fulfillment_status: "paid",
       },
       success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/#order`,
+      ...(reservation ? { expires_at: Math.floor(Date.now() / 1000) + 30 * 60 } : {}),
       allow_promotion_codes: false,
     });
 
-    if (!session.url) {
-      return NextResponse.json(
-        { error: "Stripe did not return a checkout URL." },
-        { status: 500 }
-      );
+    stripeSessionId = session.id;
+    releaseIsSafe = false;
+    if (!session.url || (reservation && !(await attachPickupCheckout(reservation.reservation_token, session.id)))) {
+      try {
+        const expired = await stripe.checkout.sessions.expire(session.id);
+        releaseIsSafe = expired.status === "expired";
+      } catch {
+        // Never free capacity unless Stripe has actually expired the session.
+      }
+      throw new Error("Stripe checkout could not reserve the pickup");
     }
 
     return NextResponse.json({ url: session.url });
   } catch (error) {
+    if (reservation && releaseIsSafe) {
+      await releasePickup({ token: reservation.reservation_token }).catch(() => undefined);
+    }
+    if (reservation && stripeSessionId && !releaseIsSafe) {
+      console.error("Stripe session may still be open; pickup capacity retained for reconciliation", stripeSessionId);
+    }
     console.error("Stripe checkout error", error);
     return NextResponse.json(
       { error: "Unable to start Stripe checkout. Check your Stripe key and try again." },
