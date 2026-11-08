@@ -111,16 +111,13 @@ export async function POST(request: Request) {
       allow_promotion_codes: false,
     });
 
+    if (!session.url) {
+      if (reservation) await stripe.checkout.sessions.expire(session.id).catch(() => undefined);
+      throw new Error("Stripe did not return a checkout URL");
+    }
     if (reservation && !(await attachPickupCheckout(reservation.reservation_token, session.id))) {
       await stripe.checkout.sessions.expire(session.id).catch(() => undefined);
       throw new Error("Pickup reservation could not be attached to checkout");
-    }
-
-    if (!session.url) {
-      return NextResponse.json(
-        { error: "Stripe did not return a checkout URL." },
-        { status: 500 }
-      );
     }
 
     return NextResponse.json({ url: session.url });
