@@ -103,3 +103,15 @@ export async function releasePickup(input: { token?: string; sessionId?: string 
   const rows = await sql`SELECT public.release_pickup(${input.token ?? null}::uuid,${input.sessionId ?? null}) AS ok`;
   return rows[0]?.ok === true;
 }
+
+export type PendingPickupSession = { checkout_session_id: string; expires_at: string };
+export async function listPendingPickupSessions(limit = 50): Promise<PendingPickupSession[]> {
+  const sql = db();
+  const rows = await sql`SELECT checkout_session_id, expires_at::text AS expires_at
+    FROM public.pickup_reservations
+    WHERE status='reserved'
+      AND checkout_session_id IS NOT NULL
+      AND expires_at < now()
+    ORDER BY expires_at ASC LIMIT ${Math.min(Math.max(limit, 1), 100)}`;
+  return rows as PendingPickupSession[];
+}
