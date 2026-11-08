@@ -53,7 +53,16 @@ export async function savePickupWindow(input: Partial<PickupWindow> & { id?: str
     UPDATE public.pickup_windows SET label=${label}, address=${address}, pickup_date=${pickupDate}::date,
       start_time=${startTime}::time, end_time=${endTime}::time, cutoff_at=${cutoff}::timestamptz,
       max_orders=${maxOrders}, is_open=${isOpen}
-    WHERE id=${input.id}::uuid
+    WHERE id=${input.id}::uuid AND (
+      reserved_orders + confirmed_orders = 0 OR (
+        label IS NOT DISTINCT FROM ${label}
+        AND address IS NOT DISTINCT FROM ${address}
+        AND pickup_date IS NOT DISTINCT FROM ${pickupDate}::date
+        AND start_time IS NOT DISTINCT FROM ${startTime}::time
+        AND end_time IS NOT DISTINCT FROM ${endTime}::time
+        AND cutoff_at IS NOT DISTINCT FROM ${cutoff}::timestamptz
+      )
+    )
     RETURNING id, label, address, pickup_date::text AS pickup_date,
       to_char(start_time, 'HH24:MI') AS start_time, to_char(end_time, 'HH24:MI') AS end_time,
       cutoff_at::text AS cutoff_at, max_orders, reserved_orders, confirmed_orders, is_open
@@ -65,7 +74,7 @@ export async function savePickupWindow(input: Partial<PickupWindow> & { id?: str
       to_char(start_time, 'HH24:MI') AS start_time, to_char(end_time, 'HH24:MI') AS end_time,
       cutoff_at::text AS cutoff_at, max_orders, reserved_orders, confirmed_orders, is_open
   `;
-  if (rows.length !== 1) throw new Error("Pickup window was not saved");
+  if (rows.length !== 1) throw new Error("Cannot modify a booked pickup window. You may close it or change its capacity.");
   return rows[0] as PickupWindow;
 }
 
