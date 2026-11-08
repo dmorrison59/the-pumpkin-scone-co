@@ -1,5 +1,6 @@
 import Stripe from "stripe";
 import { NextResponse } from "next/server";
+import { confirmPaidPickup, releasePickup, windowsConfigured } from "../../../lib/pickup-windows-store";
 
 export const runtime = "nodejs";
 
@@ -78,6 +79,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
 
+  // Subscribe to checkout.session.expired in Stripe before enabling scheduling.
+  if (event.type === "checkout.session.expired") {
+    const expired = event.data.object as Stripe.Checkout.Session;
+    if (expired.metadata?.pickup_reservation_token && windowsConfigured()) {
+      try { await releasePickup({ sessionId: expired.id }); }
+      catch { return NextResponse.json({ error: "Could not release expired reservation" }, { status: 500 }); }
+    }
+    return NextResponse.json({ received: true });
+  }
   if (event.type !== "checkout.session.completed" && event.type !== "checkout.session.async_payment_succeeded") {
     return NextResponse.json({ received: true });
   }
@@ -88,6 +98,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ received: true });
   }
 
+  if (session.metadata?.pickup_reservation_token) {
+    if (!windowsConfigured()) return NextResponse.json({ error: "Pickup database unavailable" }, { status: 503 });
+    try {
+      const confirmed = await confirmPaidPickup(session.id);
+      if (!confirmed) return NextResponse.json({ error: "Pickup reservation could not be confirmed" }, { status: 500 });
+    } catch {
+      return NextResponse.json({ error: "Pickup reservation persistence failure" }, { status: 500 });
+    }
+  }
   const customerEmail = session.customer_details?.email || session.customer_email;
   if (!customerEmail) {
     console.error("Paid Checkout session has no customer email", session.id);
@@ -110,6 +129,8 @@ export async function POST(request: Request) {
     emailRow("Total paid", amount),
     emailRow("Pickup date", pickupDate),
     emailRow("Pickup window", pickupWindow),
+    ...(metadata.pickup_location ? [emailRow("Pickup location", metadata.pickup_location)] : []),
+    ...(metadata.pickup_address ? [emailRow("Pickup address", metadata.pickup_address)] : []),
     emailRow("Stripe order reference", session.id),
   ].join("");
   const customerHtml = emailLayout(
