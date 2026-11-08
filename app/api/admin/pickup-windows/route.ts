@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     typeof body.start_time !== "string" || !validTime.test(body.start_time) ||
     typeof body.end_time !== "string" || !validTime.test(body.end_time) ||
     body.end_time <= body.start_time ||
-    typeof body.cutoff_at !== "string" || !Number.isFinite(Date.parse(body.cutoff_at)) ||
+    typeof body.cutoff_at !== "string" || !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d$/.test(body.cutoff_at) ||
     !Number.isInteger(body.max_orders) || (body.max_orders as number) < 1 || (body.max_orders as number) > 1000 ||
     typeof body.is_open !== "boolean" ||
     (body.id !== undefined && (typeof body.id !== "string" || !/^[0-9a-f-]{36}$/i.test(body.id)))) {
