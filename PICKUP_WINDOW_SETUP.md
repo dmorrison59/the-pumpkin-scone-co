@@ -34,3 +34,20 @@
 - Verify all email recipients receive the selected pickup location/address/date/time and admin reporting groups orders properly.
 - Investigate production readiness/security controls (Basic Auth, rate limiting, idempotency, and admin action audit).
 - Do not merge or enable for live payments before acceptance tests pass.
+
+## Verification completed (Preview, November 2026)
+- Neon project `pumpkin-scone-db` (`steep-violet-91746984`), Preview branch `br-lingering-haze-bbwqxlud`; production default `main` was not modified.
+- **Two concurrent SQL reservation requests for a capacity-1 Preview window**: exactly one succeeded, the other returned `This pickup window is full`. Database counters showed one reserved / zero confirmed.
+- Reserved test window released successfully and was **closed**; do not confuse it with a real customer pickup.
+- Transaction-rollback test confirmed a booked window cannot be edited under the app's protected-update predicate.
+- Eastern winter 8 PM cutoff resolved to 01:00 UTC; summer 8 PM resolved to 00:00 UTC.
+- Vercel Preview builds for checkout guard, reconciliation route, admin control, and timezone correction: READY.
+- Production Vercel deployment stayed on main at its previous commit.
+
+## Live acceptance blockers (do not merge or enable)
+1. Complete a real **Stripe sandbox** checkout in Preview, confirm metadata and both email notifications, then prove capacity accounting in Neon. Sandbox Stripe account connection/testing required.
+2. Verify Stripe webhook endpoint receives `checkout.session.expired`; test missed, duplicate and delayed events. Trigger admin `/api/admin/pickup-reconcile` safely.
+3. Verify admin browser POST actually saves and rereads a Preview pickup window and that the customer-facing picker renders available windows. SQL- and build-level checks alone are not browser acceptance.
+4. Add automated scheduled reconciliation or an operator procedure to run the admin recovery button regularly; otherwise missed webhooks may leave stale holds until manually reconciled.
+5. Evaluate async payments, refunds and customer communication before accepting live orders.
+6. Strengthen private admin authentication and add security/rate limiting before releasing customer order data in production.
