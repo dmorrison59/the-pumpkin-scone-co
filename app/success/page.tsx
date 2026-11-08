@@ -38,6 +38,8 @@ export default async function SuccessPage({
   const boxQuantity = session?.metadata?.box_quantity;
   const pickupDate = session?.metadata?.pickup_date;
   const pickupWindow = session?.metadata?.pickup_window || "9:00 AM–1:00 PM";
+  const selectedPickupLocation = session?.metadata?.pickup_location;
+  const selectedPickupAddress = session?.metadata?.pickup_address;
 
   return (
     <main className="successPage">
@@ -67,7 +69,8 @@ export default async function SuccessPage({
 
             <div className="pickupInstructions">
               <h2>Pickup location</h2>
-              <p>{launch.pickupLocation || "Pickup location will be provided before pickup."}</p>
+              <p>{selectedPickupLocation || launch.pickupLocation || "Pickup location will be provided before pickup."}</p>
+              {selectedPickupAddress && <p>{selectedPickupAddress}</p>}
               {launch.contactEmail && (
                 <p>
                   Questions? <a href={`mailto:${launch.contactEmail}`}>{launch.contactEmail}</a>
