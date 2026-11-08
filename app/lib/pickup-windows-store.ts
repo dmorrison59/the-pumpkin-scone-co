@@ -51,7 +51,7 @@ export async function savePickupWindow(input: Partial<PickupWindow> & { id?: str
   const maxOrders = input.max_orders!, isOpen = input.is_open!;
   const rows = input.id ? await sql`
     UPDATE public.pickup_windows SET label=${label}, address=${address}, pickup_date=${pickupDate}::date,
-      start_time=${startTime}::time, end_time=${endTime}::time, cutoff_at=${cutoff}::timestamptz,
+      start_time=${startTime}::time, end_time=${endTime}::time, cutoff_at=(${cutoff}::timestamp AT TIME ZONE 'America/New_York'),
       max_orders=${maxOrders}, is_open=${isOpen}
     WHERE id=${input.id}::uuid AND (
       reserved_orders + confirmed_orders = 0 OR (
@@ -60,7 +60,7 @@ export async function savePickupWindow(input: Partial<PickupWindow> & { id?: str
         AND pickup_date IS NOT DISTINCT FROM ${pickupDate}::date
         AND start_time IS NOT DISTINCT FROM ${startTime}::time
         AND end_time IS NOT DISTINCT FROM ${endTime}::time
-        AND cutoff_at IS NOT DISTINCT FROM ${cutoff}::timestamptz
+        AND cutoff_at IS NOT DISTINCT FROM (${cutoff}::timestamp AT TIME ZONE 'America/New_York')
       )
     )
     RETURNING id, label, address, pickup_date::text AS pickup_date,
@@ -69,7 +69,7 @@ export async function savePickupWindow(input: Partial<PickupWindow> & { id?: str
   ` : await sql`
     INSERT INTO public.pickup_windows(label,address,pickup_date,start_time,end_time,cutoff_at,max_orders,is_open)
     VALUES (${label},${address},${pickupDate}::date,${startTime}::time,${endTime}::time,
-      ${cutoff}::timestamptz,${maxOrders},${isOpen})
+      (${cutoff}::timestamp AT TIME ZONE 'America/New_York'),${maxOrders},${isOpen})
     RETURNING id, label, address, pickup_date::text AS pickup_date,
       to_char(start_time, 'HH24:MI') AS start_time, to_char(end_time, 'HH24:MI') AS end_time,
       cutoff_at::text AS cutoff_at, max_orders, reserved_orders, confirmed_orders, is_open
