@@ -42,9 +42,11 @@ export async function listPickupWindows(): Promise<PickupWindow[]> {
 export function publicWindow(window: PickupWindow) {
   const cutoff = new Date(window.cutoff_at).getTime();
   // Date comparison uses America/New_York; cutoff is an absolute timestamp.
-  const day = new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date());
+  }).formatToParts(new Date());
+  const dates = Object.fromEntries(parts.filter(p => p.type !== "literal").map(p => [p.type, p.value]));
+  const day = `${dates.year}-${dates.month}-${dates.day}`;
   return window.is_open && window.pickup_date >= day &&
     Number.isFinite(cutoff) && cutoff > Date.now() &&
     window.confirmed_orders + window.reserved_orders < window.max_orders;
