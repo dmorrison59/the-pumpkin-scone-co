@@ -23,3 +23,12 @@ This branch adds a private /admin/pickup-windows schedule editor and read-only /
 
 ## Launch gate
 Do not merge until all checkout integration, transactional reservation functions, lifecycle tests, email pickup details, and private admin authorization are verified. Current site remains unchanged.
+
+## Draft integration added
+- Customer selection appears only when `PICKUP_SCHEDULING_ENABLED=true`.
+- Checkout reserves one unit of capacity atomically using `reserve_pickup_window` before creating Stripe Checkout.
+- Stripe metadata snapshots pickup name, address, date, time window, and reservation token.
+- Paid webhook confirms capacity through `confirm_paid_pickup`; expired sessions require the `checkout.session.expired` event subscription and release via `release_pickup`.
+- **Do not enable** until Supabase database credentials are configured, both SQL scripts applied, and concurrency/expiry tests pass.
+- Verify checkout session expiration and attached holds under delayed webhook delivery. Add a reconciliation job to recover from missed Stripe webhook events and handle refunds/cancellations before production use.
+- No migration is applied; current production uses its original Saturday rule.
