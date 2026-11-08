@@ -3,6 +3,15 @@ import { FormEvent, useState } from "react";
 import type { CSSProperties } from "react";
 import type { PickupWindow } from "../../lib/pickup-windows-store";
 
+function easternLocalInput(value: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(value));
+  const p = Object.fromEntries(parts.filter(x => x.type !== "literal").map(x => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
+}
+
 const blank = { id: "", label: "", address: "", pickup_date: "", start_time: "09:00", end_time: "12:00", cutoff_at: "", max_orders: 20, is_open: false };
 export default function PickupWindowsForm({ initialWindows, enabled }: { initialWindows: PickupWindow[]; enabled: boolean }) {
   const [form, setForm] = useState(blank);
@@ -12,20 +21,19 @@ export default function PickupWindowsForm({ initialWindows, enabled }: { initial
   function edit(w: PickupWindow) {
     setForm({ id: w.id, label: w.label, address: w.address, pickup_date: w.pickup_date,
       start_time: w.start_time.slice(0,5), end_time: w.end_time.slice(0,5),
-      cutoff_at: new Date(w.cutoff_at).toISOString().slice(0,16), max_orders: w.max_orders, is_open: w.is_open });
+      cutoff_at: easternLocalInput(w.cutoff_at), max_orders: w.max_orders, is_open: w.is_open });
   }
   async function save(e: FormEvent) {
     e.preventDefault(); setSaving(true); setMessage("");
     try {
-      const cutoff = new Date(form.cutoff_at);
-      if (!Number.isFinite(cutoff.getTime())) throw new Error("Choose a valid order deadline");
+      if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(form.cutoff_at)) throw new Error("Choose a valid order deadline");
       const response = await fetch("/api/admin/pickup-windows", { method: "POST", headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({ ...form, id: form.id || undefined, cutoff_at: cutoff.toISOString() }) });
+        body: JSON.stringify({ ...form, id: form.id || undefined, cutoff_at: form.cutoff_at }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "Unable to save");
       setWindows(old => [...old.filter(w => w.id !== result.window.id), result.window].sort((a,b)=>a.pickup_date.localeCompare(b.pickup_date)));
       setForm(blank);
-      setMessage("Pickup window saved. Changes are not yet connected to customer checkout.");
+      setMessage("Pickup window saved in the Preview database. Customer checkout is controlled by the scheduling feature switch.");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save"); }
     finally { setSaving(false); }
   }
