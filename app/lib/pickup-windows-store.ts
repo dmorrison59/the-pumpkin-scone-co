@@ -65,3 +65,41 @@ export async function savePickupWindow(input: Partial<PickupWindow> & { id?: str
   if (result.length !== 1) throw new Error("Pickup window was not saved");
   return result[0] as PickupWindow;
 }
+
+export type PickupReservation = {
+  reservation_token: string; pickup_label: string; pickup_address: string;
+  pickup_date: string; pickup_window: string; expires_at: string;
+};
+
+async function rpc(name: string, body: Record<string, unknown>): Promise<unknown> {
+  const response = await request(`rpc/${name}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return response.json();
+}
+
+export async function reservePickupWindow(id: string): Promise<PickupReservation> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) throw new Error("Invalid pickup window");
+  const result = await rpc("reserve_pickup_window", { p_window_id: id });
+  if (!Array.isArray(result) || result.length !== 1 || typeof result[0].reservation_token !== "string") {
+    throw new Error("No pickup reservations available");
+  }
+  return result[0] as PickupReservation;
+}
+
+export async function attachPickupCheckout(token: string, sessionId: string): Promise<boolean> {
+  return (await rpc("attach_pickup_checkout", { p_token: token, p_session_id: sessionId })) === true;
+}
+
+export async function confirmPaidPickup(sessionId: string): Promise<boolean> {
+  return (await rpc("confirm_paid_pickup", { p_session_id: sessionId })) === true;
+}
+
+export async function releasePickup(input: { token?: string; sessionId?: string }): Promise<boolean> {
+  return (await rpc("release_pickup", {
+    p_token: input.token ?? null,
+    p_session_id: input.sessionId ?? null,
+  })) === true;
+}
