@@ -3,12 +3,14 @@
 ## Status
 - This branch is a draft. The existing live website remains on its original Saturday schedule.
 - Uses the **Neon PostgreSQL** integration for Vercel, not Supabase.
-- No Neon schema has been applied in this workflow and **no real database transaction tests have run**.
+- Neon schema applied to Preview branch `br-lingering-haze-bbwqxlud` only. Production branch `br-billowing-snow-bbycujtf` unchanged.
+- Preview SQL smoke tests PASSED: reserve 1 of 1, reject extra reservation, attach session, confirm paid, duplicate confirm idempotency, release and duplicate release idempotency. Tests used rollback; Preview tables remain empty.
+- Concurrent multi-connection race tests and end-to-end Stripe checkout tests have NOT run.
 - Keep `PICKUP_SCHEDULING_ENABLED` unset in Production and Preview until the launch checklist passes.
 
 ## Database setup
 1. Confirm the Neon Preview deployment connects to a separate Neon preview branch (do not infer this from the Vercel env variable labels alone).
-2. In the **Preview branch only**, apply `neon/001_pickup_schedule.sql` with SQL editor read-only mode off. This schema creates `pickup_windows`, `pickup_reservations`, and locked reservation functions.
+2. **Completed in Preview only:** Applied `neon/001_pickup_schedule.sql`. The schema created `pickup_windows`, `pickup_reservations`, and atomic reservation functions.
 3. Set server-side `DATABASE_URL` (or `POSTGRES_URL`) for Preview through the Vercel Neon integration; these variables are already listed in the Vercel project.
 4. Build the draft branch and verify `/admin/pickup-windows`, the protected admin POST endpoint, and the published-window GET endpoint.
 5. For Preview only, set `PICKUP_SCHEDULING_ENABLED=true` **after** the schema and transactional tests are successful.
@@ -23,7 +25,7 @@
 - Changing future slots does not rewrite already confirmed Stripe order metadata.
 
 ## Outstanding before launch — mandatory
-- Test schema migration against **separate Neon Preview** database; inspect table constraints and functions.
+- Schema installed and basic SQL smoke-tested on **separate Neon Preview** database. Full migration recovery and concurrency tests remain.
 - Confirm concurrent last-slot checkouts cannot overbook.
 - Confirm completed, duplicate, expired, delayed, and interrupted Stripe webhook handling.
 - Implement/verify recovery or reconciliation for missed `checkout.session.expired` webhooks so abandoned holds cannot block capacity indefinitely.
