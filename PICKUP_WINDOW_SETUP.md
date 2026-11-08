@@ -1,34 +1,34 @@
-# Multi-location pickup windows — staged foundation
+# Pumpkin Scone Co. — Neon pickup scheduling (DRAFT — NOT FOR PRODUCTION)
 
-This branch adds a private /admin/pickup-windows schedule editor and read-only /api/pickup-windows public availability endpoint.
+## Status
+- This branch is a draft. The existing live website remains on its original Saturday schedule.
+- Uses the **Neon PostgreSQL** integration for Vercel, not Supabase.
+- No Neon schema has been applied in this workflow and **no real database transaction tests have run**.
+- Keep `PICKUP_SCHEDULING_ENABLED` unset in Production and Preview until the launch checklist passes.
 
-**Not ready to merge or launch**: The current checkout still uses the original Saturday pickup rule. No customer should be offered a selectable pickup window until checkout, Stripe metadata, confirmation emails, and atomic reservation lifecycle are integrated and tested.
+## Database setup
+1. Confirm the Neon Preview deployment connects to a separate Neon preview branch (do not infer this from the Vercel env variable labels alone).
+2. In the **Preview branch only**, apply `neon/001_pickup_schedule.sql` with SQL editor read-only mode off. This schema creates `pickup_windows`, `pickup_reservations`, and locked reservation functions.
+3. Set server-side `DATABASE_URL` (or `POSTGRES_URL`) for Preview through the Vercel Neon integration; these variables are already listed in the Vercel project.
+4. Build the draft branch and verify `/admin/pickup-windows`, the protected admin POST endpoint, and the published-window GET endpoint.
+5. For Preview only, set `PICKUP_SCHEDULING_ENABLED=true` **after** the schema and transactional tests are successful.
+6. The Checkout Stripe webhook must subscribe to `checkout.session.completed`, `checkout.session.async_payment_succeeded`, and `checkout.session.expired`.
 
-## Required setup
-1. Provision a dedicated Supabase project for The Pumpkin Scone Co.
-2. Apply supabase/pickup_windows.sql.
-3. Add PICKUP_SUPABASE_URL and PICKUP_SUPABASE_SERVICE_ROLE_KEY to Vercel server environments only. Do not put the service-role key in NEXT_PUBLIC_ variables, logs or chat.
-4. Verify Basic Auth protection covers /admin/:path* and /api/admin/:path*.
-5. Review the admin editor and test DB constraints before enabling customer-facing selection.
+## Rules
+- Only the business owner publishes a location, date, shared pickup start/end window, order cutoff, and max order count.
+- Customers choose from those windows; they cannot pick an individual time.
+- Each paid order keeps its own snapshot of the published location/address/date/time.
+- Server uses atomic SQL function `reserve_pickup_window` to enforce concurrent capacity, `attach_pickup_checkout` to pair Stripe session, `confirm_paid_pickup` when paid, and `release_pickup` on Stripe expiration.
+- Public availability is off until the feature flag is enabled; server never trusts customer-submitted address/time values.
+- Changing future slots does not rewrite already confirmed Stripe order metadata.
 
-## Intended business rules
-- Owner publishes named locations, specific dates, shared start/end windows and order cutoffs.
-- Many customers can choose the same window. No individual appointment slots.
-- Customer checkout must persist a snapshot of location/date/window on the Stripe order.
-- Reservations must use an atomic DB transaction, enforce capacity with concurrent checkouts, expire abandoned checkout holds, and reconcile paid/completed/expired sessions.
-- Closing a window blocks new reservations but never changes already confirmed orders.
-- Cancel/refund and late webhook arrival must reconcile without overselling or duplicate reservations.
-- If schedule storage is unavailable, checkout must fail closed rather than revert to an unapproved default Saturday.
-- Confirm all times are interpreted as America/New_York, including daylight-saving transitions.
-
-## Launch gate
-Do not merge until all checkout integration, transactional reservation functions, lifecycle tests, email pickup details, and private admin authorization are verified. Current site remains unchanged.
-
-## Draft integration added
-- Customer selection appears only when `PICKUP_SCHEDULING_ENABLED=true`.
-- Checkout reserves one unit of capacity atomically using `reserve_pickup_window` before creating Stripe Checkout.
-- Stripe metadata snapshots pickup name, address, date, time window, and reservation token.
-- Paid webhook confirms capacity through `confirm_paid_pickup`; expired sessions require the `checkout.session.expired` event subscription and release via `release_pickup`.
-- **Do not enable** until Supabase database credentials are configured, both SQL scripts applied, and concurrency/expiry tests pass.
-- Verify checkout session expiration and attached holds under delayed webhook delivery. Add a reconciliation job to recover from missed Stripe webhook events and handle refunds/cancellations before production use.
-- No migration is applied; current production uses its original Saturday rule.
+## Outstanding before launch — mandatory
+- Test schema migration against **separate Neon Preview** database; inspect table constraints and functions.
+- Confirm concurrent last-slot checkouts cannot overbook.
+- Confirm completed, duplicate, expired, delayed, and interrupted Stripe webhook handling.
+- Implement/verify recovery or reconciliation for missed `checkout.session.expired` webhooks so abandoned holds cannot block capacity indefinitely.
+- Handle cancellation/refund semantics, and prevent editing a confirmed window in a way that makes already-booked customer pickup impossible.
+- Test DST transitions, cutoff boundaries, and no-availability behavior.
+- Verify all email recipients receive the selected pickup location/address/date/time and admin reporting groups orders properly.
+- Investigate production readiness/security controls (Basic Auth, rate limiting, idempotency, and admin action audit).
+- Do not merge or enable for live payments before acceptance tests pass.
