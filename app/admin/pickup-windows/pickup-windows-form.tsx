@@ -1,5 +1,6 @@
 "use client";
 import { FormEvent, useState } from "react";
+import type { CSSProperties } from "react";
 import type { PickupWindow } from "../../lib/pickup-windows-store";
 
 const blank = { id: "", label: "", address: "", pickup_date: "", start_time: "09:00", end_time: "12:00", cutoff_at: "", max_orders: 20, is_open: false };
@@ -28,8 +29,8 @@ export default function PickupWindowsForm({ initialWindows, enabled }: { initial
     } catch (error) { setMessage(error instanceof Error ? error.message : "Unable to save"); }
     finally { setSaving(false); }
   }
-  const input = {width:"100%",padding:10,border:"1px solid #d6c3b2",borderRadius:6,boxSizing:"border-box" as const};
-  const label = {display:"grid",gap:6,marginBottom:13};
+  const input: CSSProperties = {width:"100%",padding:10,border:"1px solid #d6c3b2",borderRadius:6,boxSizing:"border-box" as const};
+  const label: CSSProperties = {display:"grid",gap:6,marginBottom:13};
   return <div>
     <h2>Scheduled pickup windows</h2>
     {windows.length===0 ? <p>No pickup windows created yet.</p> : windows.map(w=><div key={w.id} style={{padding:14,marginBottom:10,border:"1px solid #e1cdbb",borderRadius:9}}>
